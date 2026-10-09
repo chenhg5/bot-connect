@@ -47,27 +47,26 @@ At least one of `claude` / `codex` must be installed and logged in.
 
 ## Step 2: Install bot-connect
 
-Install with Go (puts `bot-connect` in `$(go env GOPATH)/bin`):
+Pick one (macOS / Linux, x64 / arm64):
 
 ```bash
+# a) install script — downloads the newest release, verifies its checksum, installs to ~/.local/bin
+curl -fsSL https://raw.githubusercontent.com/chenhg5/bot-connect/main/install.sh | sh
+
+# b) npm — the user already has Node if they use Claude Code / Codex
+npm install -g bot-connect
+
+# c) Go toolchain
 go install github.com/chenhg5/bot-connect/cmd/bot-connect@latest
-bot-connect -h
 ```
 
-Or build from source (handy for keeping `config.example.toml` and the docs next to the binary):
+Check: `bot-connect version`. If the install script says the directory isn't on `PATH`, add it
+(e.g. `export PATH="$HOME/.local/bin:$PATH"` in the shell profile) — a `command` brain calls
+`bot-connect tool`, so the binary must be on `PATH`.
 
-```bash
-git clone https://github.com/chenhg5/bot-connect ~/code/bot-connect
-cd ~/code/bot-connect
-go build -o bin/bot-connect ./cmd/bot-connect
-./bin/bot-connect -h
-```
-
-If built from source, put it on `PATH` (needed if the brain will be a `command` agent that calls `bot-connect tool`):
-
-```bash
-mkdir -p ~/.local/bin && ln -sf ~/code/bot-connect/bin/bot-connect ~/.local/bin/bot-connect
-```
+From source, for development: `git clone https://github.com/chenhg5/bot-connect && cd bot-connect && make build`
+(binary in `bin/`). The config example lives at
+https://github.com/chenhg5/bot-connect/blob/main/config.example.toml.
 
 ## Step 3: Ask the user these questions
 
@@ -92,10 +91,12 @@ Notes for the agent:
 
 ## Step 4: Write config.toml
 
-Start from the example and edit, or write it from the answers:
+Pick a directory for it (e.g. `~/.bot-connect/config.toml`), start from the example or write it from the
+answers, and keep it private:
 
 ```bash
-cd ~/code/bot-connect && cp config.example.toml config.toml && chmod 600 config.toml
+mkdir -p ~/.bot-connect && curl -fsSL -o ~/.bot-connect/config.toml \
+  https://raw.githubusercontent.com/chenhg5/bot-connect/main/config.example.toml && chmod 600 ~/.bot-connect/config.toml
 ```
 
 **Minimal personal bot** (Claude Code brain on an API provider, one project):
@@ -180,7 +181,7 @@ Token / Encrypt Key.** Whoever owns the Feishu app is the bot's owner unless `ow
 ### Option A — scan a QR code (simplest)
 
 ```bash
-./bin/bot-connect feishu setup -config config.toml
+bot-connect feishu setup -config ~/.bot-connect/config.toml
 ```
 
 It prints a QR code and a URL. The user scans it with the Feishu mobile app and confirms. bot-connect
@@ -227,13 +228,13 @@ between them.
 Try it locally first, without Feishu (the user is owner; `@name text` speaks as a visitor):
 
 ```bash
-./bin/bot-connect -config config.toml -console
+bot-connect -config ~/.bot-connect/config.toml -console
 ```
 
 Then for real:
 
 ```bash
-./bin/bot-connect -config config.toml
+bot-connect -config ~/.bot-connect/config.toml
 ```
 
 Expected log lines:
@@ -255,7 +256,7 @@ every message with the resolved sender, every turn, tool call and task.
 Keep it running (deployment is the user's choice), e.g.:
 
 ```bash
-nohup ./bin/bot-connect -config config.toml > ~/.bot-connect/run.log 2>&1 &
+nohup bot-connect -config ~/.bot-connect/config.toml > ~/.bot-connect/run.log 2>&1 &
 ```
 
 or a `tmux` session, `launchd` / `systemd` unit, or a server that stays online.

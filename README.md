@@ -16,10 +16,11 @@ Design: [docs/design.md](docs/design.md) · Framework vs. configuration, interfa
 ## Quick start
 
 ```bash
-go install github.com/chenhg5/bot-connect/cmd/bot-connect@latest   # or: go build -o bin/bot-connect ./cmd/bot-connect
+curl -fsSL https://raw.githubusercontent.com/chenhg5/bot-connect/main/install.sh | sh
+# or: npm install -g bot-connect     or: go install github.com/chenhg5/bot-connect/cmd/bot-connect@latest
 cp config.example.toml config.toml   # fill [brain], [feishu], [[workers]]
-./bin/bot-connect -config config.toml            # Feishu
-./bin/bot-connect -config config.toml -console   # chat from the terminal (you are owner; "@jack hi" = visitor)
+bot-connect -config config.toml            # Feishu
+bot-connect -config config.toml -console   # chat from the terminal (you are owner; "@jack hi" = visitor)
 ```
 
 Requires `claude` and/or `codex` CLIs on PATH, logged in.

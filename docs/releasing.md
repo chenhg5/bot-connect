@@ -8,7 +8,8 @@ page is the source of truth.
 
 1. **Changelog.** Write `changelogs/<version>.md`: a one-paragraph summary, highlights, breaking changes
    (config keys renamed/removed — say how to migrate), known limitations.
-2. **Version.** Set `VERSION := <version>` in `Makefile`.
+2. **Version.** Set `VERSION := <version>` in `Makefile` and `"version"` in `npm/package.json`
+   (without the `v`: `v0.1.0` → `0.1.0`).
 3. **Gate.** `make check` (gofmt, vet, all tests) must pass, and CI must be green on `main`.
 4. **Real-IM smoke test** (not automated): run the bot against a test Feishu app and check
    `/whoami` (role owner), one question, one delegated read-only task with its report, one group @.
@@ -28,5 +29,10 @@ page is the source of truth.
      --title <version> --notes-file changelogs/<version>.md [--prerelease]
    ```
    Use `--prerelease` for `-beta.N` and for every `v0.0.x` preview.
-8. **Verify:** `go install github.com/chenhg5/bot-connect/cmd/bot-connect@<version>` works and
-   `bot-connect version` prints it; a downloaded archive's checksum matches `checksums.txt`.
+8. **npm** (after the GitHub release exists — the package downloads its assets):
+   ```bash
+   cd npm && npm publish [--tag beta]      # --tag beta for pre-releases, so `latest` stays stable
+   ```
+9. **Verify:** `go install github.com/chenhg5/bot-connect/cmd/bot-connect@<version>` works and
+   `bot-connect version` prints it; `curl …/install.sh | sh` and `npm i -g bot-connect` install it;
+   a downloaded archive's checksum matches `checksums.txt`.

@@ -23,3 +23,7 @@ jobs:
         run: make test
       - name: Build
         run: make build && ./bin/bot-connect version
+      - name: Install script (newest release)
+        run: |
+          BOT_CONNECT_INSTALL_DIR="$RUNNER_TEMP/bc" sh install.sh
+          "$RUNNER_TEMP/bc/bot-connect" version
