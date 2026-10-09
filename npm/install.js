@@ -37,6 +37,36 @@ function fetch(url, redirects = 5) {
   });
 }
 
+// retry runs fn up to 3 times, for flaky networks.
+async function retry(fn) {
+  for (let i = 1; ; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (i >= 3 || /HTTP 404/.test(err.message)) throw err;
+      console.warn(`[bot-connect] ${err.message}; retrying (${i}/2)…`);
+      await new Promise((r) => setTimeout(r, 2000 * i));
+    }
+  }
+}
+
+// extract unpacks a .tar.gz or .zip. On Windows, `tar` on PATH may be GNU tar
+// (from Git), which reads "C:" as a remote host — use the system bsdtar,
+// falling back to PowerShell's Expand-Archive.
+function extract(file, dest) {
+  if (process.platform !== "win32") {
+    execFileSync("tar", ["-xf", file, "-C", dest]);
+    return;
+  }
+  const sysTar = path.join(process.env.SystemRoot || "C:\\Windows", "System32", "tar.exe");
+  if (fs.existsSync(sysTar)) {
+    execFileSync(sysTar, ["-xf", file, "-C", dest]);
+    return;
+  }
+  execFileSync("powershell", ["-NoProfile", "-Command",
+    `Expand-Archive -LiteralPath '${file}' -DestinationPath '${dest}' -Force`]);
+}
+
 async function main() {
   const platform = PLATFORMS[process.platform];
   const arch = ARCHS[process.arch];
@@ -51,7 +81,7 @@ async function main() {
   const binary = path.join(binDir, exe);
 
   console.log(`[bot-connect] downloading ${name}${ext}`);
-  const [archive, sums] = await Promise.all([fetch(`${base}/${name}${ext}`), fetch(`${base}/checksums.txt`)]);
+  const [archive, sums] = await Promise.all([retry(() => fetch(`${base}/${name}${ext}`)), retry(() => fetch(`${base}/checksums.txt`))]);
 
   const line = sums.toString().split(/\r?\n/).find((l) => l.endsWith(` ${name}${ext}`));
   if (!line) throw new Error(`no checksum for ${name}${ext}`);
@@ -62,8 +92,7 @@ async function main() {
   try {
     const file = path.join(tmp, "a" + ext);
     fs.writeFileSync(file, archive);
-    // tar on Windows 10+ (bsdtar) also extracts .zip
-    execFileSync("tar", ["-xf", file, "-C", tmp]);
+    extract(file, tmp);
     fs.mkdirSync(binDir, { recursive: true });
     fs.copyFileSync(path.join(tmp, name, exe), binary);
     fs.chmodSync(binary, 0o755);
