@@ -1,4 +1,5 @@
 bin/
+dist/
 config.toml
 .claude/
 .DS_Store

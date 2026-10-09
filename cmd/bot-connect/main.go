@@ -25,9 +25,19 @@ import (
 	"github.com/chenhg5/bot-connect/internal/worker"
 )
 
+// Set at build time: -ldflags "-X main.version=… -X main.commit=… -X main.buildTime=…"
+var (
+	version   = "dev"
+	commit    = "none"
+	buildTime = "unknown"
+)
+
 func main() {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
+		case "version", "-version", "--version":
+			fmt.Printf("bot-connect %s (commit %s, built %s)\n", version, commit, buildTime)
+			return
 		case "tool":
 			os.Exit(toolCLI(os.Args[2:]))
 		case "feishu":
@@ -118,7 +128,7 @@ func run(cfgPath string, useConsole bool, consoleBot string) error {
 		if err := bots[bc.Name].hub.Start(ctx); err != nil {
 			return fmt.Errorf("bot %s: %w", bc.Name, err)
 		}
-		slog.Info("bot running", "bot", bc.Name, "brain", bc.Brain.Agent, "dir", bc.Dir)
+		slog.Info("bot running", "bot", bc.Name, "brain", bc.Brain.Agent, "dir", bc.Dir, "version", version)
 	}
 	if useConsole {
 		fmt.Printf("bot-connect console — bot: %s。你是 owner；用 \"@名字 消息\" 以访客身份说话。日志：%s/bot-connect.log\n\n", consoleBot, cfg.DataDir)
