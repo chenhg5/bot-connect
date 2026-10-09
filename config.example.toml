@@ -1,0 +1,129 @@
+# bot-connect config. Copy to config.toml and fill in.
+
+[bot]
+name = "alice bot"          # how the bot calls itself
+owner_name = "alice"        # whose bot this is
+# Owner / admins: platform user id, union id, or email. Leave owners empty to
+# use the IM app's owner (Feishu: whoever owns/created the app). Admins may
+# command workers like the owner; everyone else is a visitor.
+owners = []
+admins = []
+members = []                  # own private workspaces + ask read-only workers; ["*"] = everyone
+# ask_roles = ["member"]      # who may ask read-only workers (add "visitor" to open it up)
+# isolation = "shared"        # "per_user": in group chats each person has their own conversation
+data_dir = "~/.bot-connect"
+max_concurrent_turns = 3      # brain turns running at once across all chats
+turn_timeout = "5m"
+debounce = "800ms"            # wait this long for follow-up messages before replying
+history_limit = 30            # messages of plain-text history kept per conversation
+
+# The brain is a pluggable agent; bot-connect only injects tools + prompt + context.
+[brain]
+agent = "claudecode"          # "claudecode" | "codex" | "command"
+# work_dir = "~/.bot-connect/brain"
+model = "sonnet"
+# claudecode: built-in tools the brain keeps; default none (bot tools only).
+# builtin_tools = ["Read", "Grep", "Glob"]
+# read_dirs = ["~/docs/team-wiki"]   # file tools read only work_dir + these; elsewhere is refused
+# deny_read = [...]                  # never readable (default: session stores, ~/.ssh, ~/.aws, …)
+# isolate = true                     # default: ~/.claude/CLAUDE.md, memory, hooks, plugins and settings
+#                                    # never reach the brain (--bare with an API key, else --setting-sources "")
+# codex: sandbox for the brain process (default read-only)
+# sandbox = "read-only"
+# command: any agent CLI. "{prompt}" is replaced by the turn prompt (else stdin);
+# stdout is the reply; it calls tools via `bot-connect tool <name> '<json>'`.
+# command = ["pi", "-p", "{prompt}"]
+# command = ["cursor-agent", "-p", "--output-format", "text", "{prompt}"]
+# extra_args = []
+
+# claudecode: route the brain's Claude Code to a provider (see [[providers]]).
+# provider = "minimax"
+# --- user-defined behaviour ---
+# Persona / rules for your bot (replaces the default persona; the framework
+# protocol is always appended).
+# system_prompt = "你是 alice 的助理，说话简洁，周末不派重活。"
+# system_prompt_file = "~/.bot-connect/persona.md"
+# Which bot-connect tools this brain may use (default: all):
+# tools = ["list_workers", "read_worker", "delegate", "task_status", "cancel_task", "send_message", "notify_owner"]
+# Extra MCP servers for the brain:
+# [[brain.mcp_servers]]
+# name = "jira"
+# url = "http://127.0.0.1:9000/mcp"
+# [brain.env]
+# FOO = "bar"
+
+# [server]
+# listen = "127.0.0.1:0"      # local tool server (MCP + CLI API), random port by default
+
+[feishu]
+app_id = ""
+app_secret = ""
+# domain = "https://open.larksuite.com"   # for Lark (international)
+# reaction = "OnIt"                       # emoji added on receipt; "none" to disable
+# Or use an app held by lark-cli (created with `lark-cli config init --new --name bot-connect`);
+# credentials stay in lark-cli. Takes precedence over app_id/app_secret.
+# larkcli_profile = "bot-connect"
+
+# Providers for Claude Code processes (brain or workers), injected as
+# ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN / ANTHROPIC_MODEL like cc-connect does.
+# Without a provider, claude uses its own login.
+# [[providers]]
+# name = "minimax"
+# base_url = "https://api.minimaxi.com/anthropic"
+# api_key_env = "MINIMAX_API_KEY"
+# model = "MiniMax-M3"
+
+# Permissions: docs/permissions.md. Workers are the bot's ONLY window onto your machine's agent sessions: the
+# brain can list / read / continue exactly the sessions a worker covers, and
+# nothing else. Shared by all bots (one queue per session).
+[[workers]]
+name = "cc-connect"
+agent = "claudecode"          # "claudecode" | "codex"
+work_dir = "~/code/cc-connect/src/cc-connect"
+description = "cc-connect 项目：Go 写的 IM ↔ coding agent 桥"
+access = "workspace"          # readonly | workspace | full — see docs/permissions.md
+# read_dirs = []  write_dirs = []
+# per_user = "worktree"       # members get their own copy: own session + own git worktree ("dir" = empty dir)
+# provider = "minimax"        # claudecode only
+# Which sessions this worker covers (default: only those bot-connect starts for it):
+# session_id = ""             # continue this existing session by default
+# sessions = ["<id>", "<id>"] # more existing sessions it may read / continue
+# dir_sessions = false        # true: every session of this agent whose dir is work_dir
+# deny_read = [...]           # claudecode: paths its file tools may not read
+#                             # (default: other agents' session stores, ~/.ssh, ~/.aws, …; [] disables)
+# confine = true              # claudecode: shell runs in Claude Code's OS sandbox, so deny_read also
+#                             # holds for scripts and writes stay in work_dir (false = no sandbox)
+# task_timeout = "30m"
+# public = false              # true: visitors can see this worker's name/status (never its content)
+
+[[workers]]
+name = "bot-connect"
+agent = "codex"
+work_dir = "~/code/bot-connect"
+description = "bot-connect 项目本身"
+sandbox = "workspace-write"   # codex -s
+# model = "gpt-6-sol"
+
+# ---- Several bots in one process ----
+# Replace [bot] / [brain] / [feishu] above with one [[bots]] block per bot.
+# Each bot has its own IM app, brain, persona and owners; `workers` limits
+# which workers (and therefore which sessions) it can reach.
+#
+# [[bots]]
+# name = "alice bot"
+# owner_name = "alice"
+# workers = ["cc-connect", "bot-connect"]
+# [bots.brain]
+# agent = "claudecode"
+# system_prompt = "…"
+# [bots.feishu]
+# larkcli_profile = "bot-connect"
+#
+# [[bots]]
+# name = "team bot"
+# owner_name = "team"
+# admins = ["alice@corp.com"]
+# workers = ["bot-connect"]
+# [bots.feishu]
+# app_id = "cli_…"
+# app_secret = "…"
