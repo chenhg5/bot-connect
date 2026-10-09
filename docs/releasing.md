@@ -32,9 +32,12 @@ page is the source of truth.
    Use `--prerelease` for `-beta.N` and for every `v0.0.x` preview.
 8. **npm** (after the GitHub release exists — the package downloads its assets):
    ```bash
-   cd npm && npm publish [--tag beta]      # --tag beta for pre-releases, so `latest` stays stable
+   cd npm && npm publish                   # while there is no stable 1.x, previews go to `latest`
+   # once a stable release exists: npm publish --tag beta for -beta.N, so `latest` stays stable
    ```
-9. **Verify:** `go install github.com/chenhg5/bot-connect/cmd/bot-connect@<version>` works and
+9. **Installers:** publishing the release triggers CI's `install-scripts` job (install.sh on Linux and
+   macOS, install.ps1 on Windows, the npm package on all three) — it must be green.
+10. **Verify:** `go install github.com/chenhg5/bot-connect/cmd/bot-connect@<version>` works and
    `bot-connect version` prints it; `curl …/install.sh | sh`, `irm …/install.ps1 | iex` (Windows)
    and `npm i -g bot-connect` install it;
    a downloaded archive's checksum matches `checksums.txt`.

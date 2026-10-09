@@ -1,6 +1,6 @@
 {
   "name": "bot-connect",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "One IM bot per person: chat with your bot in Feishu; it answers or hands work to Claude Code / Codex sessions and reports back",
   "keywords": ["claude-code", "codex", "ai-agent", "feishu", "lark", "chatbot", "coding-agent"],
   "homepage": "https://github.com/chenhg5/bot-connect",

@@ -2,7 +2,7 @@ APP     := bot-connect
 CMD     := ./cmd/bot-connect
 DIST    := dist
 
-VERSION    := v0.0.1
+VERSION    := v0.0.2
 COMMIT     := $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
 BUILD_TIME := $(shell date -u '+%Y-%m-%dT%H:%M:%SZ')
 
