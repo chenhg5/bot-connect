@@ -166,6 +166,9 @@ func (a *codexAdapter) Run(ctx context.Context, req Request) (Response, error) {
 	args := worker.CodexArgs(req.SessionID, sandbox, a.cfg.Model, overrides, req.Prompt)
 	args = append(args[:len(args)-1], append(append([]string(nil), a.cfg.ExtraArgs...), req.Prompt)...)
 	res, err := agentcli.Codex(ctx, agentcli.Call{Dir: a.cfg.WorkDir, Env: env, Args: args})
+	if a.cfg.Isolate == nil || *a.cfg.Isolate {
+		agentcli.SyncCodexAuth(filepath.Join(filepath.Dir(a.cfg.WorkDir), "brain-codex-home"))
+	}
 	return Response{Text: res.Text, SessionID: res.SessionID}, err
 }
 

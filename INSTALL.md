@@ -47,7 +47,7 @@ At least one of `claude` / `codex` must be installed and logged in.
 
 ## Step 2: Install bot-connect
 
-Pick one (macOS / Linux, x64 / arm64):
+Pick one (macOS / Linux / Windows, x64 / arm64):
 
 ```bash
 # a) install script — downloads the newest release, verifies its checksum, installs to ~/.local/bin
@@ -59,6 +59,16 @@ npm install -g bot-connect
 # c) Go toolchain
 go install github.com/chenhg5/bot-connect/cmd/bot-connect@latest
 ```
+
+On Windows (PowerShell), instead of a):
+
+```powershell
+irm https://raw.githubusercontent.com/chenhg5/bot-connect/main/install.ps1 | iex
+```
+
+It installs to `%LOCALAPPDATA%\bot-connect\bin` and adds that to the user `PATH`.
+In `config.toml` on Windows, write paths with forward slashes or single quotes
+(`work_dir = 'C:\code\myapp'`), since `\` starts an escape inside double quotes.
 
 Check: `bot-connect version`. If the install script says the directory isn't on `PATH`, add it
 (e.g. `export PATH="$HOME/.local/bin:$PATH"` in the shell profile) — a `command` brain calls

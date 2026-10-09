@@ -26,7 +26,7 @@ func TestInstallDocConfigsLoad(t *testing.T) {
 		}
 		n++
 		p := filepath.Join(t.TempDir(), "c.toml")
-		_ = os.WriteFile(p, []byte("data_dir = \""+t.TempDir()+"\"\n"+body), 0o600)
+		_ = os.WriteFile(p, []byte("data_dir = '"+t.TempDir()+"'\n"+body), 0o600)
 		t.Setenv("BOT_BRAIN_API_KEY", "test")
 		if _, err := config.Load(p); err != nil {
 			t.Errorf("config block %d does not load: %v\n%s", n, err, body)

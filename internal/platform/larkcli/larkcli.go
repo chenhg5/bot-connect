@@ -15,9 +15,9 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
-	"syscall"
 	"time"
 
+	"github.com/chenhg5/bot-connect/internal/agentcli"
 	"github.com/chenhg5/bot-connect/internal/hub"
 	"github.com/chenhg5/bot-connect/internal/identity"
 )
@@ -107,7 +107,7 @@ func (p *Platform) consume(ctx context.Context, onMessage func(hub.Inbound)) err
 		"--profile", p.cfg.Profile, "--as", "bot")
 	// consume treats stdin EOF as "stop": hold stdin open for the process's
 	// lifetime, and stop it with SIGTERM so it cleans up its subscription.
-	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGTERM) }
+	cmd.Cancel = func() error { return agentcli.StopGracefully(cmd) }
 	cmd.WaitDelay = 10 * time.Second
 	stdin, err := cmd.StdinPipe()
 	if err != nil {

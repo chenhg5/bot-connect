@@ -9,21 +9,37 @@ on:
 jobs:
   test:
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
       - name: Vet
-        run: make vet
+        run: |
+          test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+          go vet ./...
       - name: Test
-        run: make test
+        run: go test -count=1 ./...
       - name: Build
-        run: make build && ./bin/bot-connect version
-      - name: Install script (newest release)
+        run: go build -o bot-connect-ci ./cmd/bot-connect && ./bot-connect-ci version
+
+  install-scripts:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: install.sh (newest release)
         run: |
           BOT_CONNECT_INSTALL_DIR="$RUNNER_TEMP/bc" sh install.sh
           "$RUNNER_TEMP/bc/bot-connect" version

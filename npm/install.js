@@ -13,7 +13,7 @@ const path = require("path");
 
 const REPO = "chenhg5/bot-connect";
 const VERSION = "v" + require("./package.json").version;
-const PLATFORMS = { darwin: "darwin", linux: "linux" };
+const PLATFORMS = { darwin: "darwin", linux: "linux", win32: "windows" };
 const ARCHS = { x64: "amd64", arm64: "arm64" };
 
 function fetch(url, redirects = 5) {
@@ -41,28 +41,31 @@ async function main() {
   const platform = PLATFORMS[process.platform];
   const arch = ARCHS[process.arch];
   if (!platform || !arch) {
-    throw new Error(`bot-connect supports macOS and Linux on x64/arm64 (got ${process.platform}/${process.arch})`);
+    throw new Error(`bot-connect supports macOS, Linux and Windows on x64/arm64 (got ${process.platform}/${process.arch})`);
   }
   const name = `bot-connect-${VERSION}-${platform}-${arch}`;
+  const ext = platform === "windows" ? ".zip" : ".tar.gz";
+  const exe = platform === "windows" ? "bot-connect.exe" : "bot-connect";
   const base = `https://github.com/${REPO}/releases/download/${VERSION}`;
   const binDir = path.join(__dirname, "bin");
-  const binary = path.join(binDir, "bot-connect");
+  const binary = path.join(binDir, exe);
 
-  console.log(`[bot-connect] downloading ${name}.tar.gz`);
-  const [archive, sums] = await Promise.all([fetch(`${base}/${name}.tar.gz`), fetch(`${base}/checksums.txt`)]);
+  console.log(`[bot-connect] downloading ${name}${ext}`);
+  const [archive, sums] = await Promise.all([fetch(`${base}/${name}${ext}`), fetch(`${base}/checksums.txt`)]);
 
-  const line = sums.toString().split("\n").find((l) => l.endsWith(` ${name}.tar.gz`));
-  if (!line) throw new Error(`no checksum for ${name}.tar.gz`);
+  const line = sums.toString().split(/\r?\n/).find((l) => l.endsWith(` ${name}${ext}`));
+  if (!line) throw new Error(`no checksum for ${name}${ext}`);
   const actual = crypto.createHash("sha256").update(archive).digest("hex");
-  if (actual !== line.split(/\s+/)[0]) throw new Error(`checksum mismatch for ${name}.tar.gz`);
+  if (actual !== line.split(/\s+/)[0]) throw new Error(`checksum mismatch for ${name}${ext}`);
 
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "bot-connect-"));
   try {
-    const tgz = path.join(tmp, "a.tar.gz");
-    fs.writeFileSync(tgz, archive);
-    execFileSync("tar", ["-xzf", tgz, "-C", tmp]);
+    const file = path.join(tmp, "a" + ext);
+    fs.writeFileSync(file, archive);
+    // tar on Windows 10+ (bsdtar) also extracts .zip
+    execFileSync("tar", ["-xf", file, "-C", tmp]);
     fs.mkdirSync(binDir, { recursive: true });
-    fs.copyFileSync(path.join(tmp, name, "bot-connect"), binary);
+    fs.copyFileSync(path.join(tmp, name, exe), binary);
     fs.chmodSync(binary, 0o755);
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
@@ -72,6 +75,6 @@ async function main() {
 
 main().catch((err) => {
   console.error(`[bot-connect] install failed: ${err.message}`);
-  console.error(`[bot-connect] alternatives: curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | sh`);
+  console.error(`[bot-connect] or download it from https://github.com/${REPO}/releases`);
   process.exit(1);
 });

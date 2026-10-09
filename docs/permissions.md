@@ -22,6 +22,10 @@ Members never see the owner's workers, sessions or tasks, and members never see 
 | `workspace` (default) | writes only `work_dir` (+`write_dirs`); shell runs sandboxed; `deny_read` holds for scripts too | `bypassPermissions` inside the OS sandbox + deny rules | permission profile: minimal system reads + `work_dir`/`write_dirs` write, `read_dirs` read |
 | `full` | no sandbox | `bypassPermissions`, deny rules on file tools only | `danger-full-access` |
 
+**Windows:** Claude Code has no OS sandbox there, so `confine` cannot be enforced for Claude workers
+(bot-connect logs a warning); `deny_read` still covers their file tools, not shell commands. Codex
+permission profiles use Codex's own Windows sandbox.
+
 `confine = false` falls back to Codex's legacy sandboxes (which read anywhere) / no Claude sandbox.
 At run time every non-`full` worker is also denied bot-connect's own state (audit log, conversations,
 isolated agent homes) and every other member's private workspace.

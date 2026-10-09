@@ -96,6 +96,14 @@ func run(cfgPath string, useConsole bool, consoleBot string) error {
 	// The owner's sessions, plus those of isolated Codex workers.
 	sessions := session.NewCatalog(session.NewClaudeStore(""), session.NewCodexStore(""), session.NewCodexStore(workers.CodexHome()))
 	workers.Audit, workers.Sessions, workers.BusyWindow = auditLog, sessions, 90*time.Second
+	if !worker.SandboxSupported() {
+		for _, w := range cfg.Workers {
+			if w.Agent == "claudecode" && w.Confine != nil && *w.Confine {
+				slog.Warn("Claude Code has no OS sandbox on this platform: confine is not enforced; "+
+					"deny_read only covers its file tools, not shell commands", "worker", w.Name)
+			}
+		}
+	}
 
 	if consoleBot == "" {
 		consoleBot = cfg.Bots[0].Name

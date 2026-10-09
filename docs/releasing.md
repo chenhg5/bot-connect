@@ -21,11 +21,12 @@ page is the source of truth.
    ```
 6. **Build from the tag** (binaries embed the tag's commit):
    ```bash
-   make release-all          # dist/bot-connect-<version>-{darwin,linux}-{amd64,arm64}.tar.gz + checksums.txt
+   make release-all          # dist/bot-connect-<version>-{darwin,linux}-{amd64,arm64}.tar.gz,
+                             #      bot-connect-<version>-windows-{amd64,arm64}.zip, checksums.txt
    ```
 7. **Publish:**
    ```bash
-   gh release create <version> dist/*.tar.gz dist/checksums.txt \
+   gh release create <version> dist/*.tar.gz dist/*.zip dist/checksums.txt \
      --title <version> --notes-file changelogs/<version>.md [--prerelease]
    ```
    Use `--prerelease` for `-beta.N` and for every `v0.0.x` preview.
@@ -34,5 +35,6 @@ page is the source of truth.
    cd npm && npm publish [--tag beta]      # --tag beta for pre-releases, so `latest` stays stable
    ```
 9. **Verify:** `go install github.com/chenhg5/bot-connect/cmd/bot-connect@<version>` works and
-   `bot-connect version` prints it; `curl …/install.sh | sh` and `npm i -g bot-connect` install it;
+   `bot-connect version` prints it; `curl …/install.sh | sh`, `irm …/install.ps1 | iex` (Windows)
+   and `npm i -g bot-connect` install it;
    a downloaded archive's checksum matches `checksums.txt`.

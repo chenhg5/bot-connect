@@ -7,7 +7,7 @@
   "repository": { "type": "git", "url": "https://github.com/chenhg5/bot-connect.git" },
   "license": "MIT",
   "author": "chenhg5",
-  "os": ["darwin", "linux"],
+  "os": ["darwin", "linux", "win32"],
   "cpu": ["x64", "arm64"],
   "bin": { "bot-connect": "run.js" },
   "scripts": { "postinstall": "node install.js" },

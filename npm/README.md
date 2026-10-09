@@ -9,7 +9,7 @@ bot-connect version
 ```
 
 This package downloads the matching binary from
-[GitHub Releases](https://github.com/chenhg5/bot-connect/releases) (macOS / Linux, x64 / arm64) and
+[GitHub Releases](https://github.com/chenhg5/bot-connect/releases) (macOS / Linux / Windows, x64 / arm64) and
 verifies its checksum.
 
 Setup: [INSTALL.md](https://github.com/chenhg5/bot-connect/blob/main/INSTALL.md) — written so an AI agent

@@ -18,10 +18,10 @@ func load(t *testing.T, body string) (*Config, error) {
 
 func TestMultiBot(t *testing.T) {
 	dir := t.TempDir()
-	c, err := load(t, `data_dir = "`+dir+`"
+	c, err := load(t, `data_dir = '`+dir+`'`+`
 [[workers]]
 name = "a"
-work_dir = "`+dir+`"
+work_dir = '`+dir+`'`+`
 
 [[bots]]
 name = "alice"
@@ -50,7 +50,7 @@ app_id = "cli_x"
 
 func TestSingleBotShorthand(t *testing.T) {
 	dir := t.TempDir()
-	c, err := load(t, "[bot]\nname = \"solo\"\ndata_dir = \""+dir+"\"\n[feishu]\nlarkcli_profile = \"p\"\n")
+	c, err := load(t, "[bot]\nname = \"solo\"\ndata_dir = '"+dir+"'\n[feishu]\nlarkcli_profile = \"p\"\n")
 	if err != nil {
 		t.Fatal(err)
 	}

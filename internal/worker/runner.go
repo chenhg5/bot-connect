@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/chenhg5/bot-connect/internal/agentcli"
@@ -114,6 +115,9 @@ func (codexRunner) Run(ctx context.Context, spec config.Worker, sessionID, promp
 	}
 	args := CodexArgs(sessionID, sandbox, spec.Model, overrides, prompt)
 	res, err := agentcli.Codex(ctx, agentcli.Call{Dir: spec.WorkDir, Env: env, Args: args})
+	if spec.Isolate != nil && *spec.Isolate && spec.CodexHome != "" {
+		agentcli.SyncCodexAuth(spec.CodexHome)
+	}
 	return res.Text, firstNonEmpty(res.SessionID, sessionID), err
 }
 
@@ -154,7 +158,7 @@ func WorkerSettings(spec config.Worker) string {
 	if spec.DenyRead != nil && len(*spec.DenyRead) > 0 {
 		st["permissions"] = map[string]any{"deny": denyRules(*spec.DenyRead)}
 	}
-	if spec.Confine != nil && *spec.Confine {
+	if spec.Confine != nil && *spec.Confine && SandboxSupported() {
 		st["sandbox"] = map[string]any{"enabled": true, "autoAllowBashIfSandboxed": true}
 	}
 	if len(st) == 0 {
@@ -167,6 +171,7 @@ func WorkerSettings(spec config.Worker) string {
 func denyRules(paths []string) []string {
 	var deny []string
 	for _, p := range paths {
+		p = claudeRulePath(p)
 		if strings.HasPrefix(p, "/") {
 			p = "/" + p // Claude Code: "//abs/path" = absolute
 			if !strings.Contains(p, "*") && filepath.Ext(p) == "" {
@@ -214,4 +219,16 @@ func CodexProfile(workDir string, writable bool, readDirs, writeDirs, deny []str
 	// The table goes in as one TOML value: `-c` would split dotted path keys.
 	return []string{`default_permissions="bot-connect"`,
 		"permissions.bot-connect.filesystem={" + strings.Join(fs, ", ") + "}"}
+}
+
+// SandboxSupported: Claude Code's OS sandbox exists on macOS and Linux only.
+func SandboxSupported() bool { return runtime.GOOS != "windows" }
+
+// claudeRulePath writes Windows absolute paths the way Claude Code matches
+// them (POSIX form: C:\Users\a → /c/Users/a).
+func claudeRulePath(p string) string {
+	if vol := filepath.VolumeName(p); len(vol) == 2 && vol[1] == ':' {
+		return "/" + strings.ToLower(vol[:1]) + filepath.ToSlash(p[2:])
+	}
+	return p
 }

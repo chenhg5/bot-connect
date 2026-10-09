@@ -5,7 +5,7 @@ const { spawnSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 
-const binary = path.join(__dirname, "bin", "bot-connect");
+const binary = path.join(__dirname, "bin", process.platform === "win32" ? "bot-connect.exe" : "bot-connect");
 if (!fs.existsSync(binary)) {
   // e.g. installed with --ignore-scripts
   const r = spawnSync(process.execPath, [path.join(__dirname, "install.js")], { stdio: "inherit" });

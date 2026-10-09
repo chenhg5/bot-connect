@@ -17,6 +17,7 @@ Design: [docs/design.md](docs/design.md) · Framework vs. configuration, interfa
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/chenhg5/bot-connect/main/install.sh | sh
+# Windows (PowerShell): irm https://raw.githubusercontent.com/chenhg5/bot-connect/main/install.ps1 | iex
 # or: npm install -g bot-connect     or: go install github.com/chenhg5/bot-connect/cmd/bot-connect@latest
 cp config.example.toml config.toml   # fill [brain], [feishu], [[workers]]
 bot-connect -config config.toml            # Feishu

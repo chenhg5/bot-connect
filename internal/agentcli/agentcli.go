@@ -13,7 +13,6 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"syscall"
 )
 
 type Result struct {
@@ -182,8 +181,8 @@ func command(ctx context.Context, c Call, bin string, args []string) *exec.Cmd {
 	}
 	cmd.Env = append(append([]string(nil), base...), c.Env...)
 	// Own process group so cancellation kills the agent's whole tree.
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
+	prepareTree(cmd)
+	cmd.Cancel = func() error { return KillTree(cmd) }
 	return cmd
 }
 
