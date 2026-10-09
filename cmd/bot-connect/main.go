@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime/debug"
 	"syscall"
 	"time"
 
@@ -36,7 +37,8 @@ func main() {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "version", "-version", "--version":
-			fmt.Printf("bot-connect %s (commit %s, built %s)\n", version, commit, buildTime)
+			v, c, t := versionInfo()
+			fmt.Printf("bot-connect %s (commit %s, built %s)\n", v, c, t)
 			return
 		case "tool":
 			os.Exit(toolCLI(os.Args[2:]))
@@ -128,7 +130,7 @@ func run(cfgPath string, useConsole bool, consoleBot string) error {
 		if err := bots[bc.Name].hub.Start(ctx); err != nil {
 			return fmt.Errorf("bot %s: %w", bc.Name, err)
 		}
-		slog.Info("bot running", "bot", bc.Name, "brain", bc.Brain.Agent, "dir", bc.Dir, "version", version)
+		slog.Info("bot running", "bot", bc.Name, "brain", bc.Brain.Agent, "dir", bc.Dir, "version", func() string { v, _, _ := versionInfo(); return v }())
 	}
 	if useConsole {
 		fmt.Printf("bot-connect console — bot: %s。你是 owner；用 \"@名字 消息\" 以访客身份说话。日志：%s/bot-connect.log\n\n", consoleBot, cfg.DataDir)
@@ -212,4 +214,26 @@ func setupBot(cfg *config.Config, bc config.BotConfig, workers *worker.Manager, 
 		h.AddPlatform(console.New())
 	}
 	return &runningBot{cfg: bc, hub: h, srv: srv}, nil
+}
+
+// versionInfo prefers values injected by the Makefile and falls back to the
+// module build info, so `go install …@vX.Y.Z` builds report their version too.
+func versionInfo() (v, c, t string) {
+	v, c, t = version, commit, buildTime
+	bi, ok := debug.ReadBuildInfo()
+	if !ok {
+		return
+	}
+	if v == "dev" && bi.Main.Version != "" && bi.Main.Version != "(devel)" {
+		v = bi.Main.Version
+	}
+	for _, s := range bi.Settings {
+		switch {
+		case s.Key == "vcs.revision" && c == "none" && len(s.Value) >= 7:
+			c = s.Value[:7]
+		case s.Key == "vcs.time" && t == "unknown":
+			t = s.Value
+		}
+	}
+	return
 }
