@@ -95,3 +95,7 @@ internal/toolserver  serves tools to the brain: MCP (/mcp/{token}) and REST for 
 internal/agentcli    headless runners for claude / codex / any command
 internal/platform    feishu (SDK), larkcli (Feishu via lark-cli), console
 ```
+
+## License
+
+MIT — see [LICENSE](LICENSE).

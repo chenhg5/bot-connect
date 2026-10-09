@@ -44,7 +44,7 @@ release-all: clean check
 		echo "Building $(NAME)" && \
 		mkdir -p $(DIST)/$(NAME) && \
 		GOOS=$(GOOS) GOARCH=$(GOARCH) CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o $(DIST)/$(NAME)/$(APP) $(CMD) && \
-		cp README.md INSTALL.md config.example.toml $(DIST)/$(NAME)/ && \
+		cp README.md INSTALL.md LICENSE config.example.toml $(DIST)/$(NAME)/ && \
 		tar -C $(DIST) -czf $(DIST)/$(NAME).tar.gz $(NAME) && rm -rf $(DIST)/$(NAME) && \
 	) true
 	@cd $(DIST) && $(SHA256) *.tar.gz > checksums.txt
