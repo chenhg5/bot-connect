@@ -31,7 +31,7 @@ model = "sonnet"
 # codex: sandbox for the brain process (default read-only)
 # sandbox = "read-only"
 # command: any agent CLI. "{prompt}" is replaced by the turn prompt (else stdin);
-# stdout is the reply; it calls tools via `bot-connect tool <name> '<json>'`.
+# stdout is the reply; it calls tools via `bot-connect tool call --name <tool> --args '<json>'`.
 # command = ["pi", "-p", "{prompt}"]
 # command = ["cursor-agent", "-p", "--output-format", "text", "{prompt}"]
 # extra_args = []

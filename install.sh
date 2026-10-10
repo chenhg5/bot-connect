@@ -58,9 +58,9 @@ tar -xzf "$tmp/$name.tar.gz" -C "$tmp"
 mkdir -p "$DIR"
 install -m 0755 "$tmp/$name/bot-connect" "$DIR/bot-connect"
 
-say "Installed $("$DIR/bot-connect" version) to $DIR/bot-connect"
+say "Installed $("$DIR/bot-connect" version --format table) to $DIR/bot-connect"
 case ":$PATH:" in
   *":$DIR:"*) ;;
   *) say "Note: $DIR is not on your PATH. Add it, e.g.:  export PATH=\"$DIR:\$PATH\"" ;;
 esac
-say "Next: create a config (see https://github.com/$REPO/blob/$version/INSTALL.md), then run: bot-connect -config config.toml"
+say "Next: bot-connect config init, edit ~/.bot-connect/config.toml (see https://github.com/$REPO/blob/$version/INSTALL.md), then: bot-connect bot run"

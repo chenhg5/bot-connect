@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/chenhg5/bot-connect/internal/identity"
 	"github.com/chenhg5/bot-connect/internal/session"
@@ -239,4 +240,52 @@ func (m *Manager) DirOf(name string) string {
 		return w.Spec.WorkDir
 	}
 	return ""
+}
+
+// WorkerInfo is a read-only view of a worker, for the CLI.
+type WorkerInfo struct {
+	Name        string    `json:"name"`
+	Agent       string    `json:"agent"`
+	Access      string    `json:"access"`
+	Dir         string    `json:"dir"`
+	Description string    `json:"description,omitempty"`
+	Base        string    `json:"base,omitempty"`   // instance / sub-worker of
+	User        string    `json:"user,omitempty"`   // owner of a per-user instance
+	Parent      string    `json:"parent,omitempty"` // sub-worker continuing another session
+	Session     string    `json:"session,omitempty"`
+	Owned       []string  `json:"owned_sessions,omitempty"`
+	PerUser     string    `json:"per_user,omitempty"`
+	Running     string    `json:"running_task,omitempty"`
+	Queued      int       `json:"queued"`
+	LastRun     time.Time `json:"last_run,omitempty"`
+}
+
+// Snapshot lists all workers (configured, instances, sub-workers).
+func (m *Manager) Snapshot() []WorkerInfo {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []WorkerInfo
+	for n, w := range m.workers {
+		wi := WorkerInfo{Name: n, Agent: w.Spec.Agent, Access: w.Spec.Access, Dir: w.Spec.WorkDir, Description: w.Spec.Description,
+			Base: w.Base, User: w.UserID, Parent: w.Parent, Session: w.SessionID, Owned: w.Owned, PerUser: w.Spec.PerUser,
+			Queued: len(w.queue), LastRun: w.LastRun}
+		if w.current != nil {
+			wi.Running = w.current.ID
+		}
+		out = append(out, wi)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
+// Tasks returns all known tasks, newest first.
+func (m *Manager) Tasks() []Task {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []Task
+	for _, t := range m.tasks {
+		out = append(out, *t)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
+	return out
 }

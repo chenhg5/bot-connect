@@ -2,17 +2,18 @@ package main
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
 
 	"github.com/BurntSushi/toml"
+	botconnect "github.com/chenhg5/bot-connect"
 	"github.com/mdp/qrterminal/v3"
 )
 
@@ -24,33 +25,6 @@ const (
 	accountsFeishu = "https://accounts.feishu.cn"
 	accountsLark   = "https://accounts.larksuite.com"
 )
-
-func feishuCLI(args []string) int {
-	if len(args) == 0 || args[0] != "setup" {
-		fmt.Fprintln(os.Stderr, "usage: bot-connect feishu setup [-config config.toml] [-timeout 600]")
-		return 2
-	}
-	fs := flag.NewFlagSet("feishu setup", flag.ExitOnError)
-	cfgPath := fs.String("config", "config.toml", "config file to write (created from config.example.toml if missing)")
-	timeout := fs.Int("timeout", 600, "seconds to wait for the QR scan")
-	_ = fs.Parse(args[1:])
-
-	res, err := registerBot(time.Duration(*timeout) * time.Second)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "feishu setup failed:", err)
-		return 1
-	}
-	if err := writeFeishuConfig(*cfgPath, res); err != nil {
-		fmt.Fprintln(os.Stderr, "write config:", err)
-		return 1
-	}
-	fmt.Printf("\n✅ 机器人已创建：app_id=%s (%s)\n", res.appID, res.brand)
-	if res.ownerOpenID != "" {
-		fmt.Printf("   扫码人 %s 已设为 owner\n", res.ownerOpenID)
-	}
-	fmt.Printf("   已写入 %s，运行：bot-connect -config %s\n", *cfgPath, *cfgPath)
-	return 0
-}
 
 type registration struct {
 	appID, appSecret, ownerOpenID, brand string
@@ -129,12 +103,13 @@ func registerBot(timeout time.Duration) (*registration, error) {
 		return nil, fmt.Errorf("incomplete registration response")
 	}
 
-	fmt.Println("请用飞书 / Lark 手机 App 扫码，创建你的 bot 并授权：")
-	fmt.Printf("URL: %s\n\n", begin.URL)
+	// Everything for the human goes to stderr; stdout carries the result.
+	fmt.Fprintln(os.Stderr, "Scan with the Feishu / Lark mobile app to create your bot and authorize it:")
+	fmt.Fprintf(os.Stderr, "URL: %s\n\n", begin.URL)
 	qrterminal.GenerateWithConfig(begin.URL, qrterminal.Config{
-		Level: qrterminal.M, Writer: os.Stdout, BlackChar: "██", WhiteChar: "  ", QuietZone: 2,
+		Level: qrterminal.M, Writer: os.Stderr, BlackChar: "██", WhiteChar: "  ", QuietZone: 2,
 	})
-	fmt.Println("\n等待扫码…")
+	fmt.Fprintln(os.Stderr, "\nWaiting for the scan…")
 
 	interval := begin.Interval
 	if interval <= 0 {
@@ -189,9 +164,9 @@ func registerBot(timeout time.Duration) (*registration, error) {
 func writeFeishuConfig(path string, r *registration) error {
 	raw, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
-		raw, err = os.ReadFile("config.example.toml")
-		if err != nil {
-			return fmt.Errorf("%s not found and no config.example.toml to start from", path)
+		raw, err = botconnect.ConfigExample, nil
+		if mkErr := os.MkdirAll(filepath.Dir(path), 0o700); mkErr != nil {
+			return mkErr
 		}
 	} else if err != nil {
 		return err

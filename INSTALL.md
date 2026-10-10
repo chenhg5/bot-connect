@@ -11,6 +11,10 @@
 - **Secrets.** App secrets and API keys go into `config.toml` (or env vars), never into chat summaries,
   commit messages or logs. `config.toml` must stay out of git (`.gitignore` already lists it).
 - **Verify each step** with the commands given before moving on, and show the user the expected log lines.
+- **The CLI is built for you**: output is JSON when piped (or `--format json`), errors are JSON on stderr
+  with a `suggestion`, exit codes are stable (0 ok · 1 error · 2 usage · 3 not found · 4 permission denied ·
+  5 conflict · 10 dry-run passed). `bot-connect schema` returns every command and flag as JSON; commands
+  that change something accept `--dry-run`.
 - **Don't widen permissions on your own.** Defaults are conservative; only change `access`, `members`,
   `admins` or `isolate` when the user asks, and say what the change allows.
 
@@ -101,12 +105,17 @@ Notes for the agent:
 
 ## Step 4: Write config.toml
 
-Pick a directory for it (e.g. `~/.bot-connect/config.toml`), start from the example or write it from the
-answers, and keep it private:
+Create the starter config (`~/.bot-connect/config.toml`, mode 600), then edit it from the answers:
 
 ```bash
-mkdir -p ~/.bot-connect && curl -fsSL -o ~/.bot-connect/config.toml \
-  https://raw.githubusercontent.com/chenhg5/bot-connect/main/config.example.toml && chmod 600 ~/.bot-connect/config.toml
+bot-connect config init          # --path to put it elsewhere; exit 5 if it already exists (--force to overwrite)
+```
+
+Every command finds the config via `--config`, else `$BOT_CONNECT_CONFIG`, else `./config.toml`, else
+`~/.bot-connect/config.toml`. After editing, check it:
+
+```bash
+bot-connect config validate      # exit 0 = valid; JSON with bots, workers and warnings when piped
 ```
 
 **Minimal personal bot** (Claude Code brain on an API provider, one project):
@@ -191,7 +200,7 @@ Token / Encrypt Key.** Whoever owns the Feishu app is the bot's owner unless `ow
 ### Option A — scan a QR code (simplest)
 
 ```bash
-bot-connect feishu setup -config ~/.bot-connect/config.toml
+bot-connect feishu setup
 ```
 
 It prints a QR code and a URL. The user scans it with the Feishu mobile app and confirms. bot-connect
@@ -238,13 +247,14 @@ between them.
 Try it locally first, without Feishu (the user is owner; `@name text` speaks as a visitor):
 
 ```bash
-bot-connect -config ~/.bot-connect/config.toml -console
+bot-connect bot run --console
 ```
 
 Then for real:
 
 ```bash
-bot-connect -config ~/.bot-connect/config.toml
+bot-connect config validate     # exit 0 = valid; warnings list risky settings
+bot-connect bot run
 ```
 
 Expected log lines:
@@ -260,13 +270,20 @@ Then ask the user to DM the bot:
 2. "What workers do you have?" → lists the workers.
 3. A small read-only task for one worker → an acknowledgement, then a task report a minute or two later.
 
-What happened is recorded in `<data_dir>/audit/YYYY-MM-DD.jsonl` (default `~/.bot-connect/audit/`):
-every message with the resolved sender, every turn, tool call and task.
+Inspect what's going on (JSON when piped):
+
+```bash
+bot-connect bot list                         # bots, channels, brains
+bot-connect worker list                      # workers, their sessions
+bot-connect task list --status failed        # tasks; task get --id t3 for one
+bot-connect audit list --since 1h            # every message (with resolved sender), turn, tool call, task
+bot-connect session list --all --limit 10    # agent sessions on this machine (to pick ids for `sessions`)
+```
 
 Keep it running (deployment is the user's choice), e.g.:
 
 ```bash
-nohup bot-connect -config ~/.bot-connect/config.toml > ~/.bot-connect/run.log 2>&1 &
+nohup bot-connect bot run > ~/.bot-connect/run.log 2>&1 &
 ```
 
 or a `tmux` session, `launchd` / `systemd` unit, or a server that stays online.

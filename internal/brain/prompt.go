@@ -52,7 +52,7 @@ func (b *Brain) protocol() string {
 `)
 	if b.adapter.Name() == "command" {
 		exe, _ := os.Executable()
-		fmt.Fprintf(&sb, `- Tools are called from the shell (BOT_CONNECT_API is set): %[1]s tool  (list)  ·  %[1]s tool <name> '<json args>'
+		fmt.Fprintf(&sb, `- Tools are called from the shell (BOT_CONNECT_API is set): %[1]s tool list --format json  ·  %[1]s tool call --name <tool> --args '<json>'  (add --dry-run to check a call without running it; exit 4 = not allowed for this person)
 `, exe)
 	} else {
 		sb.WriteString("- bot-connect tools come from the \"bot\" MCP server.\n")

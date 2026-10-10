@@ -133,9 +133,20 @@ func (s *Server) handleCall(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	name := r.PathValue("name")
+	if args == nil {
+		args = map[string]any{}
+	}
+	if r.URL.Query().Get("dry_run") == "1" {
+		if _, err := s.reg.Check(tc, name, args); err != nil {
+			writeJSON(w, map[string]any{"ok": false, "error": err.Error(), "error_type": tools.Kind(err)})
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true, "dry_run": true, "tool": name, "args": args})
+		return
+	}
 	out, err := s.call(r.Context(), tc, "cli", name, args)
 	if err != nil {
-		writeJSON(w, map[string]any{"ok": false, "error": err.Error()})
+		writeJSON(w, map[string]any{"ok": false, "error": err.Error(), "error_type": tools.Kind(err)})
 		return
 	}
 	writeJSON(w, map[string]any{"ok": true, "result": out})

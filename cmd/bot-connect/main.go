@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"log/slog"
 	"os"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/chenhg5/bot-connect/internal/audit"
 	"github.com/chenhg5/bot-connect/internal/brain"
+	"github.com/chenhg5/bot-connect/internal/cli"
 	"github.com/chenhg5/bot-connect/internal/config"
 	"github.com/chenhg5/bot-connect/internal/hub"
 	"github.com/chenhg5/bot-connect/internal/identity"
@@ -34,26 +34,7 @@ var (
 )
 
 func main() {
-	if len(os.Args) > 1 {
-		switch os.Args[1] {
-		case "version", "-version", "--version":
-			v, c, t := versionInfo()
-			fmt.Printf("bot-connect %s (commit %s, built %s)\n", v, c, t)
-			return
-		case "tool":
-			os.Exit(toolCLI(os.Args[2:]))
-		case "feishu":
-			os.Exit(feishuCLI(os.Args[2:]))
-		}
-	}
-	cfgPath := flag.String("config", "config.toml", "path to config file")
-	useConsole := flag.Bool("console", false, "chat from this terminal (you are the owner; \"@name msg\" speaks as a visitor)")
-	consoleBot := flag.String("bot", "", "with -console: which bot the terminal talks to (default: the first)")
-	flag.Parse()
-	if err := run(*cfgPath, *useConsole, *consoleBot); err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
-		os.Exit(1)
-	}
+	os.Exit(newApp().Main(os.Args[1:]))
 }
 
 // runningBot is one bot's slice of the process.
@@ -63,11 +44,33 @@ type runningBot struct {
 	srv *toolserver.Server
 }
 
-func run(cfgPath string, useConsole bool, consoleBot string) error {
-	cfg, err := config.Load(cfgPath)
-	if err != nil {
-		return fmt.Errorf("load config: %w", err)
+type serveOpts struct {
+	Console    bool     // chat from this terminal
+	ConsoleBot string   // which bot the terminal talks to (default: first)
+	Only       []string // run only these bots (default: all)
+}
+
+// serve runs the configured bots until interrupted.
+func serve(cfg *config.Config, o serveOpts) error {
+	useConsole, consoleBot := o.Console, o.ConsoleBot
+	if len(o.Only) > 0 {
+		keep := map[string]bool{}
+		for _, n := range o.Only {
+			keep[n] = true
+		}
+		var bots []config.BotConfig
+		for _, b := range cfg.Bots {
+			if keep[b.Name] {
+				bots = append(bots, b)
+				delete(keep, b.Name)
+			}
+		}
+		for n := range keep {
+			return cli.NotFound(fmt.Sprintf("no bot named %q", n), "run: bot-connect bot list")
+		}
+		cfg.Bots = bots
 	}
+	var err error
 	if err := os.MkdirAll(cfg.DataDir, 0o700); err != nil {
 		return err
 	}
@@ -118,7 +121,7 @@ func run(cfgPath string, useConsole bool, consoleBot string) error {
 		bots[bc.Name] = rb
 	}
 	if useConsole && bots[consoleBot] == nil {
-		return fmt.Errorf("-bot %q: no such bot", consoleBot)
+		return cli.NotFound(fmt.Sprintf("no bot named %q", consoleBot), "run: bot-connect bot list")
 	}
 	// Task results go back to the bot (and conversation) that asked.
 	workers.OnFinish = func(t worker.Task) {
@@ -216,7 +219,7 @@ func setupBot(cfg *config.Config, bc config.BotConfig, workers *worker.Manager, 
 	case bc.Feishu.AppID != "":
 		h.AddPlatform(feishu.New(bc.Feishu))
 	case !withConsole:
-		return nil, fmt.Errorf("no channel: set feishu.app_id / feishu.larkcli_profile (or run it with -console)")
+		return nil, fmt.Errorf("no channel: set feishu.app_id / feishu.larkcli_profile (or run it with --console)")
 	}
 	if withConsole {
 		h.AddPlatform(console.New())

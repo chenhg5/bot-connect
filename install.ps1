@@ -43,10 +43,10 @@ try {
   Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-Write-Host "Installed $(& "$dir\bot-connect.exe" version) to $dir\bot-connect.exe"
+Write-Host "Installed $(& "$dir\bot-connect.exe" version --format table) to $dir\bot-connect.exe"
 $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
 if (($userPath -split ';') -notcontains $dir) {
   [Environment]::SetEnvironmentVariable("Path", "$userPath;$dir", "User")
   Write-Host "Added $dir to your user PATH (open a new terminal to use it)."
 }
-Write-Host "Next: create a config (see https://github.com/$repo/blob/$version/INSTALL.md), then run: bot-connect -config config.toml"
+Write-Host "Next: bot-connect config init, edit the config (see https://github.com/$repo/blob/$version/INSTALL.md), then: bot-connect bot run"

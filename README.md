@@ -20,8 +20,10 @@ curl -fsSL https://raw.githubusercontent.com/chenhg5/bot-connect/main/install.sh
 # Windows (PowerShell): irm https://raw.githubusercontent.com/chenhg5/bot-connect/main/install.ps1 | iex
 # or: npm install -g bot-connect     or: go install github.com/chenhg5/bot-connect/cmd/bot-connect@latest
 cp config.example.toml config.toml   # fill [brain], [feishu], [[workers]]
-bot-connect -config config.toml            # Feishu
-bot-connect -config config.toml -console   # chat from the terminal (you are owner; "@jack hi" = visitor)
+bot-connect config init                    # ~/.bot-connect/config.toml — edit it
+bot-connect config validate
+bot-connect bot run                        # Feishu
+bot-connect bot run --console              # chat from the terminal (you are owner; "@jack hi" = visitor)
 ```
 
 Requires `claude` and/or `codex` CLIs on PATH, logged in.
@@ -32,14 +34,14 @@ Requires `claude` and/or `codex` CLIs on PATH, logged in.
 |---|---|---|---|
 | `claudecode` | `--mcp-config` (strict), built-ins off via `--tools` | `--append-system-prompt` | one per conversation, `--resume` |
 | `codex` | `-c mcp_servers.bot.url=…` (tools pre-approved), read-only sandbox | inlined at session start | one per conversation, `exec resume` |
-| `command` | `bot-connect tool <name> '<json>'` (env `BOT_CONNECT_API`) | inlined every turn (+ recent history) | stateless |
+| `command` | `bot-connect tool call --name <tool> --args '<json>'` (env `BOT_CONNECT_API`) | inlined every turn (+ recent history) | stateless |
 
 Brains and workers are always invoked as their real CLIs (`claude -p …`, `codex exec …`, or your
 `command` argv), never through wrapper scripts. Claude Code processes can be pointed at a model
 provider (`provider = "minimax"`, defined in `[[providers]]`), the same env injection
 cc-connect uses. Set `BOT_CONNECT_TRACE_DIR=/some/dir` to dump each agent's raw event stream.
 
-Inside a brain turn, `bot-connect tool` lists the tools and `bot-connect tool delegate '{"worker":"x","instruction":"..."}'` calls one.
+Inside a brain turn, `bot-connect tool list` lists the tools and `bot-connect tool call --name delegate --args '{"worker":"x","instruction":"..."}'` calls one (`--dry-run` checks without running).
 
 ## Feishu setup
 
@@ -49,7 +51,7 @@ the WebSocket long connection: no public callback URL, no Verification Token / E
 **A. Scan a QR code (no other tools):**
 
 ```bash
-bot-connect feishu setup -config config.toml
+bot-connect feishu setup
 ```
 
 Creates a bot, writes `app_id` / `app_secret` into the config, and sets the scanner as owner.
@@ -79,7 +81,26 @@ the app owner`. DM the bot `/whoami`: it should say `role: owner`. No reply? Che
 published, the bot is in the app's availability scope, and no other process (e.g. cc-connect) holds the
 same app's long connection. In groups the bot only answers when @-mentioned.
 
-## Commands
+## CLI
+
+Noun-verb commands, long flags, `--format json|table` (JSON when piped), errors as JSON on stderr,
+stable exit codes (0 ok · 1 error · 2 usage · 3 not found · 4 permission denied · 5 conflict · 10 dry-run),
+`--dry-run` on everything that changes something, and `bot-connect schema` to read the whole command tree
+as JSON. Follows the [Agent CLI Guide](https://github.com/Johnixr/agent-cli-guide).
+
+```
+bot-connect config  init | validate | show
+bot-connect bot     list | run
+bot-connect worker  list | get
+bot-connect session list | get
+bot-connect task    list | get
+bot-connect audit   list
+bot-connect feishu  setup
+bot-connect tool    list | call        # for brains running as shell agents
+bot-connect schema | version
+```
+
+## Chat commands
 
 `/whoami` · `/status` · `/cancel <task>` · `/reset` · `/help`
 

@@ -38,6 +38,6 @@ page is the source of truth.
 9. **Installers:** publishing the release triggers CI's `install-scripts` job (install.sh on Linux and
    macOS, install.ps1 on Windows, the npm package on all three) — it must be green.
 10. **Verify:** `go install github.com/chenhg5/bot-connect/cmd/bot-connect@<version>` works and
-   `bot-connect version` prints it; `curl …/install.sh | sh`, `irm …/install.ps1 | iex` (Windows)
+   `bot-connect version --format table` prints it; `curl …/install.sh | sh`, `irm …/install.ps1 | iex` (Windows)
    and `npm i -g bot-connect` install it;
    a downloaded archive's checksum matches `checksums.txt`.

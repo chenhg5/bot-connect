@@ -6,6 +6,7 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -67,19 +68,67 @@ func (r *Registry) List(tc TurnContext) []*Tool {
 	return out
 }
 
-func (r *Registry) Call(ctx context.Context, tc TurnContext, name string, args map[string]any) (string, error) {
+// Error kinds, so callers (MCP, CLI) can react without parsing messages.
+const (
+	KindNotFound   = "not_found"
+	KindPermission = "permission_denied"
+	KindInvalid    = "invalid_arguments"
+)
+
+// ToolError is an error with a kind.
+type ToolError struct {
+	Kind string
+	Msg  string
+}
+
+func (e *ToolError) Error() string { return e.Msg }
+
+// Kind classifies any tool error.
+func Kind(err error) string {
+	var te *ToolError
+	if errors.As(err, &te) {
+		return te.Kind
+	}
+	msg := err.Error()
+	switch {
+	case strings.HasPrefix(msg, "no "):
+		return KindNotFound
+	case strings.Contains(msg, "permission denied"):
+		return KindPermission
+	}
+	return "failed"
+}
+
+// Check validates a call without running it (for --dry-run): the tool exists,
+// this turn may use it, and required arguments are present.
+func (r *Registry) Check(tc TurnContext, name string, args map[string]any) (*Tool, error) {
 	t := r.byName[name]
 	if t == nil {
-		return "", fmt.Errorf("unknown tool %q", name)
+		return nil, &ToolError{KindNotFound, fmt.Sprintf("no tool %q", name)}
 	}
 	if len(tc.Allow) > 0 && !tc.Allow[name] {
-		return "", fmt.Errorf("tool %s is not enabled for this brain", name)
+		return nil, &ToolError{KindPermission, fmt.Sprintf("permission denied: tool %s is not enabled for this brain", name)}
 	}
 	if t.OwnerOnly && !tc.Caller.Privileged() {
-		return "", fmt.Errorf("permission denied: %s needs owner/admin, and this turn involves %s (%s)", name, tc.Caller.Display(), tc.Caller.Role)
+		return nil, &ToolError{KindPermission, fmt.Sprintf("permission denied: %s needs owner/admin, and this turn involves %s (%s)", name, tc.Caller.Display(), tc.Caller.Role)}
 	}
+	if req, ok := t.Schema["required"].([]string); ok {
+		for _, k := range req {
+			if v, ok := args[k]; !ok || v == nil || v == "" {
+				return nil, &ToolError{KindInvalid, fmt.Sprintf("missing required argument %q for %s", k, name)}
+			}
+		}
+	}
+	return t, nil
+}
+
+func (r *Registry) Call(ctx context.Context, tc TurnContext, name string, args map[string]any) (string, error) {
 	if args == nil {
 		args = map[string]any{}
+	}
+	t, err := r.Check(tc, name, args)
+	if err != nil {
+		return "", err
 	}
 	return t.Handler(ctx, tc, args)
 }
