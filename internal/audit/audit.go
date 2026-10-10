@@ -22,6 +22,7 @@ const (
 	ToolCall  = "tool_call"  // the brain called a bot-connect tool
 	Task      = "task"       // a worker task changed state
 	Outbound  = "outbound"   // the bot sent a message outside a turn reply
+	Schedule  = "schedule"   // a scheduled job fired / was skipped / disabled
 )
 
 type Event struct {

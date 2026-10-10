@@ -20,6 +20,7 @@ import (
 	"github.com/chenhg5/bot-connect/internal/cli"
 	"github.com/chenhg5/bot-connect/internal/config"
 	"github.com/chenhg5/bot-connect/internal/identity"
+	"github.com/chenhg5/bot-connect/internal/schedule"
 	"github.com/chenhg5/bot-connect/internal/session"
 	"github.com/chenhg5/bot-connect/internal/tools"
 	"github.com/chenhg5/bot-connect/internal/worker"
@@ -44,7 +45,7 @@ func newApp() *cli.App {
 			"bot-connect schema --command \"worker list\"   # a command's flags as JSON",
 		},
 		Children: []*cli.Command{
-			configCmd(), botCmd(), workerCmd(), sessionCmd(), taskCmd(), auditCmd(), feishuCmd(), toolCmd(),
+			configCmd(), botCmd(), workerCmd(), sessionCmd(), taskCmd(), scheduleCmd(), auditCmd(), feishuCmd(), toolCmd(),
 			schemaCmd(app), versionCmd(),
 		},
 	}
@@ -435,6 +436,108 @@ func printTasks(w io.Writer, ts []worker.Task) {
 	tw.Flush()
 }
 
+// ---------- schedule ----------
+
+func openSchedules(c *cli.Ctx) (*schedule.Store, error) {
+	cfg, _, err := loadConfig(c)
+	if err != nil {
+		return nil, err
+	}
+	st, err := schedule.Open(cfg.DataDir)
+	if err != nil {
+		return nil, cli.Failed(err.Error(), "the schedules file may be corrupt: "+filepath.Join(cfg.DataDir, "schedules.json"), false)
+	}
+	return st, nil
+}
+
+func printJobs(w io.Writer, jobs []schedule.Job) {
+	tw := tabwriter.NewWriter(w, 0, 2, 2, ' ', 0)
+	fmt.Fprintln(tw, "ID	STATE	SPEC	NEXT	RUNS	LAST	BOT	WHAT")
+	for _, j := range jobs {
+		state, next := "enabled", "-"
+		switch {
+		case j.Once && !j.Enabled && j.Runs > 0:
+			state = "done"
+		case !j.Enabled:
+			state = "paused"
+		}
+		if !j.NextRun.IsZero() {
+			next = j.NextRun.Format("01-02 15:04")
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%d\t%s\t%s\t%s\n", j.ID, state, j.Spec, next, j.Runs, orDash(j.LastStatus), j.Bot, clip(firstNonEmpty(j.Description, j.Prompt), 40))
+	}
+	tw.Flush()
+}
+
+func scheduleCmd() *cli.Command {
+	idFlag := cli.Flag{Name: "id", Type: cli.String, Required: true, Desc: "schedule id (from schedule list)"}
+	change := func(name, summary string, apply func(*schedule.Store, string) (schedule.Job, error)) *cli.Command {
+		return &cli.Command{Name: name, Summary: summary, Effects: true,
+			Examples: []string{"bot-connect schedule " + name + " --id s1a2b3c"},
+			Flags:    []cli.Flag{configFlag, idFlag},
+			Run: func(c *cli.Ctx) error {
+				st, err := openSchedules(c)
+				if err != nil {
+					return err
+				}
+				j, ok := st.Get(c.Str("id"))
+				if !ok {
+					return cli.NotFound(fmt.Sprintf("no schedule %q", c.Str("id")), "run: bot-connect schedule list")
+				}
+				if c.Bool("dry-run") {
+					return c.DryRun(map[string]any{"action": name, "schedule": j})
+				}
+				j, err = apply(st, j.ID)
+				if err != nil {
+					return err
+				}
+				return c.Out(map[string]any{"action": name, "schedule": j}, func(w io.Writer) { fmt.Fprintf(w, "%s: %s\n", name, j.ID) })
+			}}
+	}
+	return &cli.Command{Name: "schedule", Summary: "scheduled jobs (created in chat by the owner/admins)",
+		Desc: "Jobs are created in chat (\"每个工作日 9 点检查 CI\"). A running bot picks up changes made here.",
+		Children: []*cli.Command{
+			{
+				Name: "list", Summary: "all scheduled jobs",
+				Examples: []string{"bot-connect schedule list", "bot-connect schedule list --bot team-bot --format json"},
+				Flags:    []cli.Flag{configFlag, {Name: "bot", Type: cli.String, Desc: "only this bot"}},
+				Run: func(c *cli.Ctx) error {
+					st, err := openSchedules(c)
+					if err != nil {
+						return err
+					}
+					jobs := st.List(c.Str("bot"), "")
+					if jobs == nil {
+						jobs = []schedule.Job{}
+					}
+					return c.Out(jobs, func(w io.Writer) { printJobs(w, jobs) })
+				},
+			},
+			{
+				Name: "get", Summary: "one job: spec, instruction, creator, runs",
+				Examples: []string{"bot-connect schedule get --id s1a2b3c"},
+				Flags:    []cli.Flag{configFlag, idFlag},
+				Run: func(c *cli.Ctx) error {
+					st, err := openSchedules(c)
+					if err != nil {
+						return err
+					}
+					j, ok := st.Get(c.Str("id"))
+					if !ok {
+						return cli.NotFound(fmt.Sprintf("no schedule %q", c.Str("id")), "run: bot-connect schedule list")
+					}
+					return c.Out(j, func(w io.Writer) {
+						printJobs(w, []schedule.Job{j})
+						fmt.Fprintf(w, "\ncreated by %s (%s) at %s\ninstruction:\n%s\n", j.CreatedBy.Display(), j.CreatedBy.Role, j.CreatedAt.Format("2006-01-02 15:04"), j.Prompt)
+					})
+				},
+			},
+			change("pause", "stop a job from running (keeps it)", func(st *schedule.Store, id string) (schedule.Job, error) { return st.SetEnabled(id, false) }),
+			change("resume", "let a paused job run again", func(st *schedule.Store, id string) (schedule.Job, error) { return st.SetEnabled(id, true) }),
+			change("delete", "remove a job", func(st *schedule.Store, id string) (schedule.Job, error) { return st.Delete(id) }),
+		}}
+}
+
 // ---------- session ----------
 
 func sessionCmd() *cli.Command {
@@ -537,7 +640,7 @@ func auditCmd() *cli.Command {
 			},
 			Flags: []cli.Flag{configFlag,
 				{Name: "since", Type: cli.Duration, Default: "24h", Desc: "how far back"},
-				{Name: "type", Type: cli.List, Desc: "inbound|turn_start|turn_end|tool_call|task|outbound"},
+				{Name: "type", Type: cli.List, Desc: "inbound|turn_start|turn_end|tool_call|task|outbound|schedule"},
 				{Name: "bot", Type: cli.String, Desc: "only this bot"},
 				{Name: "user", Type: cli.String, Desc: "only events of this user id"},
 				{Name: "limit", Type: cli.Int, Default: "200", Desc: "max events (the newest are kept)"},
@@ -550,10 +653,10 @@ func auditCmd() *cli.Command {
 				types := map[string]bool{}
 				for _, t := range c.List("type") {
 					switch t {
-					case audit.Inbound, audit.TurnStart, audit.TurnEnd, audit.ToolCall, audit.Task, audit.Outbound:
+					case audit.Inbound, audit.TurnStart, audit.TurnEnd, audit.ToolCall, audit.Task, audit.Outbound, audit.Schedule:
 						types[t] = true
 					default:
-						return cli.Usage(fmt.Sprintf("unknown --type %q", t), "one of inbound|turn_start|turn_end|tool_call|task|outbound")
+						return cli.Usage(fmt.Sprintf("unknown --type %q", t), "one of inbound|turn_start|turn_end|tool_call|task|outbound|schedule")
 					}
 				}
 				since := time.Now().Add(-c.Dur("since"))

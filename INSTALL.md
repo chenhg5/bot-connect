@@ -278,6 +278,7 @@ bot-connect worker list                      # workers, their sessions
 bot-connect task list --status failed        # tasks; task get --id t3 for one
 bot-connect audit list --since 1h            # every message (with resolved sender), turn, tool call, task
 bot-connect session list --all --limit 10    # agent sessions on this machine (to pick ids for `sessions`)
+bot-connect schedule list                    # scheduled jobs created in chat; pause/resume/delete --id
 ```
 
 Keep it running (deployment is the user's choice), e.g.:

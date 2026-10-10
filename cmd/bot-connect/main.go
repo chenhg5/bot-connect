@@ -20,6 +20,7 @@ import (
 	"github.com/chenhg5/bot-connect/internal/platform/console"
 	"github.com/chenhg5/bot-connect/internal/platform/feishu"
 	"github.com/chenhg5/bot-connect/internal/platform/larkcli"
+	"github.com/chenhg5/bot-connect/internal/schedule"
 	"github.com/chenhg5/bot-connect/internal/session"
 	"github.com/chenhg5/bot-connect/internal/tools"
 	"github.com/chenhg5/bot-connect/internal/toolserver"
@@ -39,9 +40,10 @@ func main() {
 
 // runningBot is one bot's slice of the process.
 type runningBot struct {
-	cfg config.BotConfig
-	hub *hub.Hub
-	srv *toolserver.Server
+	cfg    config.BotConfig
+	hub    *hub.Hub
+	srv    *toolserver.Server
+	policy *identity.StaticPolicy
 }
 
 type serveOpts struct {
@@ -108,13 +110,19 @@ func serve(cfg *config.Config, o serveOpts) error {
 		}
 	}
 
+	// Scheduled jobs: shared store, delivered into the conversation (and bot)
+	// that created them.
+	jobs, err := schedule.Open(cfg.DataDir)
+	if err != nil {
+		return err
+	}
 	if consoleBot == "" {
 		consoleBot = cfg.Bots[0].Name
 	}
 	bots := map[string]*runningBot{}
 	for _, bc := range cfg.Bots {
 		withConsole := useConsole && bc.Name == consoleBot
-		rb, err := setupBot(cfg, bc, workers, sessions, auditLog, withConsole)
+		rb, err := setupBot(cfg, bc, workers, sessions, jobs, auditLog, withConsole)
 		if err != nil {
 			return fmt.Errorf("bot %s: %w", bc.Name, err)
 		}
@@ -134,9 +142,25 @@ func serve(cfg *config.Config, o serveOpts) error {
 		}
 	}
 
+	jobs.Authorize = func(j schedule.Job) bool {
+		rb := bots[j.Bot]
+		return rb != nil && rb.policy.Role(j.CreatedBy).Privileged()
+	}
+	jobs.Fire = func(j schedule.Job) bool {
+		rb := bots[j.Bot]
+		return rb != nil && rb.hub.PostScheduled(j.ConvKey, j.ID, firstNonEmpty(j.Description, j.Spec), j.Prompt, j.CreatedBy)
+	}
+	jobs.OnEvent = func(j schedule.Job, event string) {
+		u := j.CreatedBy
+		auditLog.Record(audit.Event{Type: audit.Schedule, Bot: j.Bot, Conv: j.ConvKey, User: &u, Status: event,
+			Text: audit.Clip(j.Prompt, 500), Extra: map[string]any{"schedule": j.ID, "spec": j.Spec}})
+		slog.Info("schedule", "id", j.ID, "event", event, "bot", j.Bot)
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	workers.Start(ctx)
+	go jobs.Run(ctx.Done(), 15*time.Second)
 	for _, bc := range cfg.Bots {
 		if err := bots[bc.Name].hub.Start(ctx); err != nil {
 			return fmt.Errorf("bot %s: %w", bc.Name, err)
@@ -156,7 +180,7 @@ func serve(cfg *config.Config, o serveOpts) error {
 	return nil
 }
 
-func setupBot(cfg *config.Config, bc config.BotConfig, workers *worker.Manager, sessions *session.Catalog, sink audit.Sink, withConsole bool) (*runningBot, error) {
+func setupBot(cfg *config.Config, bc config.BotConfig, workers *worker.Manager, sessions *session.Catalog, jobs *schedule.Store, sink audit.Sink, withConsole bool) (*runningBot, error) {
 	if err := os.MkdirAll(bc.Dir, 0o700); err != nil {
 		return nil, err
 	}
@@ -192,9 +216,10 @@ func setupBot(cfg *config.Config, bc config.BotConfig, workers *worker.Manager, 
 		TurnTimeout:   bc.TurnTimeout.Duration,
 		HistoryLimit:  bc.HistoryLimit,
 		DataDir:       bc.Dir,
+		ScheduleDone:  jobs.Done,
 	}, workers)
 
-	reg := tools.New(tools.Env{Bot: bc.Name, Workers: workers, Sessions: sessions, Messenger: h, Scope: scope})
+	reg := tools.New(tools.Env{Bot: bc.Name, Workers: workers, Sessions: sessions, Messenger: h, Scope: scope, Schedules: jobs})
 	srv := toolserver.New(reg)
 	srv.Audit = sink
 	if err := srv.Start(cfg.Server.Listen); err != nil {
@@ -224,7 +249,7 @@ func setupBot(cfg *config.Config, bc config.BotConfig, workers *worker.Manager, 
 	if withConsole {
 		h.AddPlatform(console.New())
 	}
-	return &runningBot{cfg: bc, hub: h, srv: srv}, nil
+	return &runningBot{cfg: bc, hub: h, srv: srv, policy: policy}, nil
 }
 
 // versionInfo prefers values injected by the Makefile and falls back to the
@@ -247,4 +272,13 @@ func versionInfo() (v, c, t string) {
 		}
 	}
 	return
+}
+
+func firstNonEmpty(v ...string) string {
+	for _, x := range v {
+		if x != "" {
+			return x
+		}
+	}
+	return ""
 }

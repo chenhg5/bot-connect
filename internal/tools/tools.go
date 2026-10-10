@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/chenhg5/bot-connect/internal/config"
+	"github.com/chenhg5/bot-connect/internal/schedule"
 	"github.com/chenhg5/bot-connect/internal/session"
 	"github.com/chenhg5/bot-connect/internal/worker"
 )
@@ -147,6 +148,8 @@ type Env struct {
 	Workers   *worker.Manager
 	Sessions  *session.Catalog
 	Messenger Messenger
+	// Schedules is the job store (nil: scheduling disabled).
+	Schedules *schedule.Store
 	// Scope is the privileged view of the worker pool for this bot (its
 	// workers); the caller's role narrows it further per worker.
 	Scope worker.Scope
@@ -405,6 +408,73 @@ func New(env Env) *Registry {
 			return "Created worker " + s(a, "name"), nil
 		},
 	})
+	if env.Schedules != nil {
+		jobLine := func(j schedule.Job) string {
+			next := "-"
+			if !j.NextRun.IsZero() {
+				next = j.NextRun.Format("2006-01-02 15:04 Mon")
+			}
+			state := "enabled"
+			switch {
+			case j.Once && !j.Enabled && j.Runs > 0:
+				state = "done"
+			case !j.Enabled:
+				state = "paused"
+			}
+			return fmt.Sprintf("%s [%s] %q next: %s · runs: %d · last: %s — %s", j.ID, state, j.Spec, next, j.Runs, orDash(j.LastStatus), clip(firstLine(j.Description, j.Prompt), 80))
+		}
+		r.add(Tool{
+			Name: "schedule_create",
+			Description: "Create a scheduled job (owner/admin only). At each run its instruction is posted into THIS conversation and you carry it out then (answer or delegate). " +
+				"spec: cron \"m h dom mon dow\" (e.g. \"0 9 * * 1-5\" = 9:00 on weekdays), \"@every 2h\", \"@daily\", \"@weekly\", optional \"TZ=Asia/Shanghai \" prefix, or one-shot \"@once 2h\" / \"@once 15:00\" / \"@once 2026-10-12T09:00\". Minimum interval 5 minutes.",
+			OwnerOnly: true,
+			Schema: obj(props{
+				"spec":        str("when to run (see description)"),
+				"prompt":      str("the instruction to carry out at each run, self-contained"),
+				"description": str("short label shown in lists, e.g. 每日 CI 检查"),
+			}, "spec", "prompt"),
+			Handler: func(ctx context.Context, tc TurnContext, a map[string]any) (string, error) {
+				j, err := env.Schedules.Create(schedule.Job{Bot: env.Bot, ConvKey: tc.ConvKey, Spec: s(a, "spec"),
+					Prompt: s(a, "prompt"), Description: s(a, "description"), CreatedBy: tc.Caller})
+				if err != nil {
+					return "", &ToolError{KindInvalid, err.Error()}
+				}
+				return "Created " + jobLine(j), nil
+			},
+		})
+		r.add(Tool{
+			Name:        "schedule_list",
+			Description: "List this bot's scheduled jobs: id, state, spec, next run, runs, last status.",
+			OwnerOnly:   true,
+			Handler: func(ctx context.Context, tc TurnContext, a map[string]any) (string, error) {
+				jobs := env.Schedules.List(env.Bot, "")
+				if len(jobs) == 0 {
+					return "(no schedules)", nil
+				}
+				var b strings.Builder
+				for _, j := range jobs {
+					b.WriteString("- " + jobLine(j) + "\n")
+				}
+				return b.String(), nil
+			},
+		})
+		r.add(Tool{
+			Name:        "schedule_delete",
+			Description: "Delete a scheduled job by id.",
+			OwnerOnly:   true,
+			Schema:      obj(props{"id": str("schedule id, e.g. s1a2b3c")}, "id"),
+			Handler: func(ctx context.Context, tc TurnContext, a map[string]any) (string, error) {
+				j, ok := env.Schedules.Get(s(a, "id"))
+				if !ok || j.Bot != env.Bot {
+					return "", &ToolError{KindNotFound, fmt.Sprintf("no schedule %q", s(a, "id"))}
+				}
+				if _, err := env.Schedules.Delete(j.ID); err != nil {
+					return "", err
+				}
+				return "Deleted " + j.ID, nil
+			},
+		})
+	}
 	r.add(Tool{
 		Name:        "send_message",
 		Description: "Send an extra message to the current conversation right now (e.g. a quick acknowledgement before slow lookups). Your final answer is sent automatically; don't repeat it here.",
@@ -430,6 +500,22 @@ func New(env Env) *Registry {
 	})
 	sort.Strings(r.names)
 	return r
+}
+
+func orDash(v string) string {
+	if v == "" {
+		return "-"
+	}
+	return v
+}
+
+func firstLine(v ...string) string {
+	for _, x := range v {
+		if x = strings.TrimSpace(x); x != "" {
+			return strings.SplitN(x, "\n", 2)[0]
+		}
+	}
+	return ""
 }
 
 func sameOrUnder(d, root string) bool {

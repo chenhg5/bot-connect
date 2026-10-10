@@ -51,20 +51,22 @@ type Platform interface {
 const (
 	KindMessage   = "message"
 	KindTaskEvent = "task_event"
+	KindSchedule  = "schedule"
 )
 
 type Item struct {
-	Kind string
-	Text string
-	From worker.Requester
-	At   time.Time
+	Kind       string
+	Text       string
+	From       worker.Requester
+	At         time.Time
+	ScheduleID string // KindSchedule: the job that fired
 }
 
 func (it Item) priority() int {
 	switch {
 	case it.Kind == KindMessage && it.From.Privileged():
 		return 0
-	case it.Kind == KindTaskEvent:
+	case it.Kind == KindTaskEvent || it.Kind == KindSchedule:
 		return 1
 	}
 	return 2
@@ -115,6 +117,8 @@ type Options struct {
 	TurnTimeout   time.Duration
 	HistoryLimit  int
 	DataDir       string
+	// ScheduleDone is told when a turn that handled a scheduled job ends.
+	ScheduleDone func(id string)
 }
 
 type lane struct {
@@ -245,6 +249,20 @@ func (h *Hub) PostTaskEvent(t worker.Task) {
 		return
 	}
 	h.enqueue(t.ConvKey, Item{Kind: KindTaskEvent, Text: b.String(), From: t.Requester, At: time.Now()})
+}
+
+// PostScheduled delivers a due scheduled job into its conversation. It
+// returns false if the conversation is unknown (e.g. state was reset).
+func (h *Hub) PostScheduled(convKey, id, label, prompt string, creator worker.Requester) bool {
+	h.mu.Lock()
+	_, ok := h.convs[convKey]
+	h.mu.Unlock()
+	if !ok {
+		return false
+	}
+	text := fmt.Sprintf("定时任务 %s「%s」触发，执行：\n%s", id, label, prompt)
+	h.enqueue(convKey, Item{Kind: KindSchedule, Text: text, From: creator, At: time.Now(), ScheduleID: id})
+	return true
 }
 
 // BrainSession returns the brain session to resume for c, if it was created
@@ -430,6 +448,15 @@ func (h *Hub) runTurn(ctx context.Context, l *lane) {
 	l.pending = nil
 	conv := l.conv
 	h.mu.Unlock()
+	defer func() {
+		if h.opts.ScheduleDone != nil {
+			for _, it := range items {
+				if it.ScheduleID != "" {
+					h.opts.ScheduleDone(it.ScheduleID)
+				}
+			}
+		}
+	}()
 
 	turn := Turn{Conv: conv, Items: items, Caller: leastPrivileged(items)}
 	waited := time.Since(items[0].At).Round(time.Millisecond)

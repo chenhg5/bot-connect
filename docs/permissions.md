@@ -46,6 +46,14 @@ Escape hatch (wins over `access`): `permission_mode`, `tools`, `confine`, `sandb
 | pi brain | only bot-connect's tools (registered by a bundled extension, enforced with `--tools`); no context files, extensions, skills or templates; isolated config dir whose only model is the configured provider |
 | `confine` (Codex, default on) | permission profile: minimal system reads + `work_dir` + `read_dirs` |
 
+## Scheduled jobs
+
+Schedules are a persistence channel (an instruction that fires later, unattended), so: only owners/admins
+can create, list or delete them (`schedule_*` tools are hidden from members and visitors); the creator's
+role is re-checked at every run and a job whose creator lost it is disabled; jobs run in the conversation
+that created them, with the creator's rights; fires, skips and disables are audit events (`type: schedule`);
+`bot-connect schedule list|pause|delete` works on a running bot.
+
 ## Isolation between people
 
 - Private chats are separate conversations, each with its own brain session.

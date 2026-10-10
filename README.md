@@ -95,11 +95,21 @@ bot-connect bot     list | run
 bot-connect worker  list | get
 bot-connect session list | get
 bot-connect task    list | get
+bot-connect schedule list | get | pause | resume | delete
 bot-connect audit   list
 bot-connect feishu  setup
 bot-connect tool    list | call        # for brains running as shell agents
 bot-connect schema | version
 ```
+
+## Scheduled jobs
+
+Ask the bot in chat — "每个工作日 9 点看一下 CI，红了告诉我", "两小时后提醒我发周报". The brain creates a
+job (`schedule_create`); when it's due, the instruction is posted back into that conversation and the brain
+carries it out (answers, or delegates to a worker). Cron, `@every 2h`, `@daily`, `TZ=…` prefixes and
+one-shot `@once 2h` / `@once 15:00` are supported; minimum interval 5 minutes; a run is skipped while the
+previous one is still being handled. Only owners/admins can create jobs, the creator's role is re-checked at
+every run, and every run is in the audit log. Inspect and control them with `bot-connect schedule …`.
 
 ## Chat commands
 
