@@ -44,13 +44,13 @@ func TestToolCallAgainstToolServer(t *testing.T) {
 	if code, out, _ := run(owner, "call", "--name", "list_workers"); code != cli.ExitOK || !strings.Contains(out, "proj") {
 		t.Fatalf("list_workers: exit %d %s", code, out)
 	}
-	if code, out, _ := run(owner, "call", "--name", "delegate", "--args", `{"worker":"proj","instruction":"x"}`, "--dry-run"); code != cli.ExitDryRun || !strings.Contains(out, `"allowed": true`) {
+	if code, out, _ := run(owner, "call", "--name", "agent_task", "--args", `{"worker":"proj","instruction":"x"}`, "--dry-run"); code != cli.ExitDryRun || !strings.Contains(out, `"allowed": true`) {
 		t.Fatalf("dry-run delegate: exit %d %s", code, out)
 	}
 	if len(wm.Tasks()) != 0 {
 		t.Fatal("dry-run must not create a task")
 	}
-	if code, _, errb := run(visitor, "call", "--name", "delegate", "--args", `{"worker":"proj","instruction":"x"}`); code != cli.ExitNotFound && code != cli.ExitPermission {
+	if code, _, errb := run(visitor, "call", "--name", "agent_task", "--args", `{"worker":"proj","instruction":"x"}`); code != cli.ExitNotFound && code != cli.ExitPermission {
 		t.Fatalf("visitor delegate: exit %d %s", code, errb)
 	}
 	if code, _, _ := run(owner, "call", "--name", "nope"); code != cli.ExitNotFound {

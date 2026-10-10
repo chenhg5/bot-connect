@@ -8,6 +8,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/chenhg5/bot-connect/internal/app"
+	. "github.com/chenhg5/bot-connect/internal/domain/shared"
+	"github.com/chenhg5/bot-connect/internal/domain/workforce"
 	"sort"
 	"strings"
 	"time"
@@ -152,6 +155,8 @@ type Env struct {
 	// Scope is the privileged view of the worker pool for this bot (its
 	// workers); the caller's role narrows it further per worker.
 	Scope worker.Scope
+	// App is the project-management core (nil: PM tools disabled).
+	App *app.App
 }
 
 func (e Env) scope(tc TurnContext) worker.Scope {
@@ -221,6 +226,18 @@ func (e Env) createWorker(tc TurnContext, a map[string]any) (worker.WorkerInfo, 
 		}
 		return wi, &ToolError{kind, err.Error()}
 	}
+	if e.App != nil { // tracked work can go to it too
+		access := "write"
+		if wi.Access == "readonly" {
+			access = "read"
+		}
+		w := workforce.Worker{ID: WorkerID(wi.Name), Name: wi.Name, Kind: workforce.AgentSession, Trust: workforce.Controlled,
+			Description: wi.Description, Interaction: workforce.Interaction{Sessions: true},
+			Capability: []workforce.Capability{workforce.ParseCapability("dir:" + wi.Dir + ":" + access)}}
+		if err := e.App.UpsertWorker(context.Background(), System("worker_create"), w); err != nil {
+			return wi, err
+		}
+	}
 	return wi, nil
 }
 
@@ -262,7 +279,7 @@ func New(env Env) *Registry {
 	r.add(Tool{
 		Name: "list_sessions",
 		Description: "List the agent sessions your workers cover (only those — nothing else on the machine), newest first: id, agent, directory, title, last message, last update. " +
-			"Use it to find the session that holds the context for a question, then read_session, or delegate with session=<id>.",
+			"Use it to find the session that holds the context for a question, then read_session, or agent_task with session=<id>.",
 		Schema: obj(props{
 			"worker": str("only sessions of this worker"),
 			"query":  str("only sessions whose title or last message contains this text"),
@@ -332,8 +349,8 @@ func New(env Env) *Registry {
 		},
 	})
 	r.add(Tool{
-		Name: "delegate",
-		Description: "Hand work to a worker, asynchronously — by worker name, optionally in one of the sessions it covers (session=<id>). " +
+		Name: "agent_task",
+		Description: "Quick, untracked request to an agent session (a question, a small change, continuing a session; members use their private copies). For work that has an owner, a deadline, or needs following up, use delegate instead. Asynchronous — by worker name, optionally in one of the sessions it covers (session=<id>). " +
 			"Members are routed to their own private copy of per-user workers; read-only workers only answer questions. " +
 			"Returns a task id and queue position immediately; the result comes back to this conversation as a task report. " +
 			"The worker cannot see this chat: the instruction must be self-contained (goal, context, constraints, definition of done). " +
@@ -553,6 +570,9 @@ func New(env Env) *Registry {
 			return "forwarded to owner", nil
 		},
 	})
+	if env.App != nil {
+		addPM(r, env)
+	}
 	sort.Strings(r.names)
 	return r
 }

@@ -331,7 +331,7 @@ func (m *Manager) templateCatalogLocked(s Scope) string {
 	}
 	sort.Strings(names)
 	var b strings.Builder
-	b.WriteString("\ntemplates (create a worker with worker_create, or delegate with template=…):\n")
+	b.WriteString("\ntemplates (create a worker with worker_create, or agent_task with template=…):\n")
 	for _, n := range names {
 		t := m.templates[n]
 		where := map[string]string{"dir": "fresh empty dir", "existing": "a dir under " + strings.Join(t.Roots, ", "),

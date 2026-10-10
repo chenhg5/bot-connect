@@ -25,6 +25,10 @@ type Config struct {
 	// Model providers for Claude Code processes (brain and workers), the same
 	// way cc-connect does it: ANTHROPIC_BASE_URL / AUTH_TOKEN / MODEL env.
 	Providers []Provider `toml:"providers"`
+	// People the bots may hand work to (human workers).
+	People []Person `toml:"people"`
+	// The company: approval rules and standing roles (the root project).
+	Org Org `toml:"org"`
 
 	Bots []BotConfig `toml:"bots"`
 
@@ -218,6 +222,12 @@ type Worker struct {
 	// CODEX_HOME without ~/.codex config, global AGENTS.md, plugins). Default: true for
 	// workers others can use (per_user instances, readonly), false otherwise.
 	Isolate *bool `toml:"isolate" json:"isolate,omitempty"`
+	// What this agent can reach, as "system:access" ("repo:tapnow:write",
+	// "gcloud-logging:read"). Default: its directory ("dir:<work_dir>:write"
+	// or ":read" for readonly). Used to decide when an agent can do something
+	// and nobody needs to be asked.
+	Capabilities []string `toml:"capabilities" json:"capabilities,omitempty"`
+	Skills       []string `toml:"skills" json:"skills,omitempty"`
 
 	Env       []string `toml:"-" json:"-"` // resolved from Provider
 	CodexHome string   `toml:"-" json:"-"` // isolated CODEX_HOME (set by the worker manager)
@@ -258,6 +268,66 @@ func (t Template) TTL() time.Duration {
 		return 24 * time.Hour
 	}
 	return t.IdleTTL.Duration
+}
+
+// Person is a human worker.
+type Person struct {
+	ID          string   `toml:"id" json:"id"`
+	Name        string   `toml:"name" json:"name"`
+	Description string   `toml:"description" json:"description,omitempty"`
+	Skills      []string `toml:"skills" json:"skills,omitempty"`
+	// Identities recognise their messages: a platform user id, union id or
+	// email, optionally prefixed ("feishu:ou_…", "email:a@b.com").
+	Identities       []string  `toml:"identities" json:"identities,omitempty"`
+	Timezone         string    `toml:"timezone" json:"timezone,omitempty"`
+	WorkHours        []Window  `toml:"work_hours" json:"work_hours,omitempty"`
+	QuietHours       []Window  `toml:"quiet_hours" json:"quiet_hours,omitempty"`
+	MaxNudgesPerDay  int       `toml:"max_nudges_per_day" json:"max_nudges_per_day,omitempty"`
+	MinNudgeInterval Duration  `toml:"min_nudge_interval" json:"min_nudge_interval,omitempty"`
+	Consent          bool      `toml:"consent" json:"consent"`                     // agreed to take work from the bot
+	ConsentFrom      []string  `toml:"consent_from" json:"consent_from,omitempty"` // roles / user ids (default: owner)
+	Authority        []Grant   `toml:"authority" json:"authority,omitempty"`
+	Capabilities     []string  `toml:"capabilities" json:"capabilities,omitempty"` // systems they can use that agents can't
+	Contact          []Contact `toml:"contact" json:"contact,omitempty"`
+	Bots             []string  `toml:"bots" json:"bots,omitempty"` // bots that may use this person (empty = all)
+}
+
+type Window struct {
+	Start string `toml:"start" json:"start"`
+	End   string `toml:"end" json:"end"`
+	Days  []int  `toml:"days" json:"days,omitempty"` // 0 = Sunday
+}
+
+type Grant struct {
+	Action string `toml:"action" json:"action"`
+	Scope  string `toml:"scope" json:"scope,omitempty"`
+}
+
+type Contact struct {
+	Channel    string `toml:"channel" json:"channel"` // feishu_dm | …
+	Address    string `toml:"address" json:"address"`
+	MinUrgency string `toml:"min_urgency" json:"min_urgency,omitempty"` // normal | reminder | urgent | critical
+	Approval   bool   `toml:"approval" json:"approval,omitempty"`
+}
+
+// Org is the company-level setup.
+type Org struct {
+	Title    string    `toml:"title"`
+	Policies []Policy  `toml:"policies"`
+	Roles    []OrgRole `toml:"roles"`
+}
+
+type Policy struct {
+	Action    string   `toml:"action"`
+	Scope     string   `toml:"scope"`
+	Approvers []string `toml:"approvers"` // role names or worker ids
+	Quorum    int      `toml:"quorum"`
+}
+
+type OrgRole struct {
+	Worker string   `toml:"worker"`
+	Role   string   `toml:"role"`
+	Duties []string `toml:"duties"`
 }
 
 type Duration struct{ time.Duration }
@@ -501,6 +571,39 @@ func (c *Config) validate() error {
 			}
 		default:
 			return fmt.Errorf("template %s: workspace must be worktree, dir or existing", t.Name)
+		}
+	}
+	people := map[string]bool{}
+	for _, p := range c.People {
+		if p.ID == "" || strings.ContainsAny(p.ID, " @#") {
+			return fmt.Errorf("people: each person needs an id without spaces, @ or #")
+		}
+		if people[p.ID] || seen[p.ID] || tpls[p.ID] || p.ID == "owner" {
+			return fmt.Errorf("people: id %q is already used (or reserved)", p.ID)
+		}
+		people[p.ID] = true
+		if len(p.Contact) == 0 {
+			return fmt.Errorf("person %s: add at least one [[people.contact]] (e.g. channel = \"feishu_dm\", address = \"ou_…\")", p.ID)
+		}
+		for _, ct := range p.Contact {
+			if ct.Channel == "" || ct.Address == "" {
+				return fmt.Errorf("person %s: each contact needs channel and address", p.ID)
+			}
+			switch ct.MinUrgency {
+			case "", "normal", "reminder", "urgent", "critical":
+			default:
+				return fmt.Errorf("person %s: min_urgency must be normal, reminder, urgent or critical", p.ID)
+			}
+		}
+	}
+	for _, r := range c.Org.Roles {
+		if !seen[r.Worker] && !people[r.Worker] && r.Worker != "owner" {
+			return fmt.Errorf("org role %q: unknown worker %q", r.Role, r.Worker)
+		}
+	}
+	for _, pl := range c.Org.Policies {
+		if pl.Action == "" || len(pl.Approvers) == 0 {
+			return fmt.Errorf("org policy: needs action and approvers")
 		}
 	}
 	bots, apps := map[string]bool{}, map[string]string{}

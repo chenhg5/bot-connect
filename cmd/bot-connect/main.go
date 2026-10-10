@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/chenhg5/bot-connect/internal/adapters/drivers/agentsession"
+	"github.com/chenhg5/bot-connect/internal/app"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -44,6 +46,8 @@ type runningBot struct {
 	hub    *hub.Hub
 	srv    *toolserver.Server
 	policy *identity.StaticPolicy
+	pm     *app.App
+	agents *agentsession.Driver
 }
 
 type serveOpts struct {
@@ -137,7 +141,7 @@ func serve(cfg *config.Config, o serveOpts) error {
 		if rb == nil && len(cfg.Bots) == 1 {
 			rb = bots[cfg.Bots[0].Name] // tasks from before multi-bot
 		}
-		if rb != nil {
+		if rb != nil && !rb.agents.Finished(context.Background(), t) {
 			rb.hub.PostTaskEvent(t)
 		}
 	}
@@ -165,6 +169,7 @@ func serve(cfg *config.Config, o serveOpts) error {
 		if err := bots[bc.Name].hub.Start(ctx); err != nil {
 			return fmt.Errorf("bot %s: %w", bc.Name, err)
 		}
+		go bots[bc.Name].pm.Run(ctx, time.Minute)
 		slog.Info("bot running", "bot", bc.Name, "brain", bc.Brain.Agent, "dir", bc.Dir, "version", func() string { v, _, _ := versionInfo(); return v }())
 	}
 	if useConsole {
@@ -225,7 +230,11 @@ func setupBot(cfg *config.Config, bc config.BotConfig, workers *worker.Manager, 
 		ScheduleDone:  jobs.Done,
 	}, workers)
 
-	reg := tools.New(tools.Env{Bot: bc.Name, Workers: workers, Sessions: sessions, Messenger: h, Scope: scope, Schedules: jobs})
+	pm, agents, err := setupPM(cfg, bc, h, workers, scope, sink, withConsole)
+	if err != nil {
+		return nil, fmt.Errorf("projects: %w", err)
+	}
+	reg := tools.New(tools.Env{Bot: bc.Name, Workers: workers, Sessions: sessions, Messenger: h, Scope: scope, Schedules: jobs, App: pm})
 	srv := toolserver.New(reg)
 	srv.Audit = sink
 	if err := srv.Start(cfg.Server.Listen); err != nil {
@@ -236,6 +245,7 @@ func setupBot(cfg *config.Config, bc config.BotConfig, workers *worker.Manager, 
 	if err != nil {
 		return nil, err
 	}
+	b.SetPM(pm)
 	h.SetBrain(b)
 	switch {
 	case bc.Brain.Agent == "command":
@@ -255,7 +265,7 @@ func setupBot(cfg *config.Config, bc config.BotConfig, workers *worker.Manager, 
 	if withConsole {
 		h.AddPlatform(console.New())
 	}
-	return &runningBot{cfg: bc, hub: h, srv: srv, policy: policy}, nil
+	return &runningBot{cfg: bc, hub: h, srv: srv, policy: policy, pm: pm, agents: agents}, nil
 }
 
 // versionInfo prefers values injected by the Makefile and falls back to the

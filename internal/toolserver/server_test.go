@@ -49,7 +49,7 @@ func TestMCPPrivilege(t *testing.T) {
 	if v, o := count(visitor), count(owner); v >= o {
 		t.Fatalf("visitor sees %d tools, owner %d", v, o)
 	}
-	call := rpc(t, s.MCPURL(visitor), `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"delegate","arguments":{"worker":"x","instruction":"rm -rf"}}}`)
+	call := rpc(t, s.MCPURL(visitor), `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"agent_task","arguments":{"worker":"x","instruction":"rm -rf"}}}`)
 	if call["result"].(map[string]any)["isError"] != true {
 		t.Fatalf("visitor delegate should be denied: %v", call)
 	}

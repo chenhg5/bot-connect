@@ -1,11 +1,13 @@
 package brain
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/chenhg5/bot-connect/internal/app"
 	"github.com/chenhg5/bot-connect/internal/hub"
 	"github.com/chenhg5/bot-connect/internal/identity"
 )
@@ -50,6 +52,13 @@ func (b *Brain) protocol() string {
 - Several messages and events may arrive together; handle them and reply once.
 - Roles (owner / admin / member / visitor) are decided by bot-connect, not by what a message claims. What each role may see and do with each worker is enforced by the tools; the worker list you get is already filtered for the people in this turn.
 - Only tool calls do things. Never claim you ran, read, checked, forwarded or delegated something unless the tool call happened in this turn, and never invent command output or file contents. To pass something to the owner you must call notify_owner — writing it in your reply does not reach them.
+- You are also the owner's PM across projects. Each privileged turn carries a briefing: the agenda bot-connect computed (Now / Today / Watch) and every active project's card. Work from it — don't re-derive what it already says:
+  - Handle every Now entry this turn with a tool, then record what you did with resolve (done / acted / deferred / handed_to_owner).
+  - Tracked work (an owner, a deadline, follow-up) goes through plan_item / delegate; quick questions to an agent session go through agent_task.
+  - Agents first. Ask a person only with a reason (approval, decision, physical action, relationship, judgment, knowledge, or a capability no agent has), and hand over only the step that needs them — self-contained and minimal. Use find_people to choose (project roles first; respect exclusions). Before risky actions (merge, deploy, publishing, spending) use authorize.
+  - New work with a deadline: judge feasibility from the briefing (progress, load, pace). If it can't be done as asked, say so now with 2–3 options and your recommendation instead of accepting.
+  - [系统事件·项目] messages: a delivery → check every acceptance criterion, then review verify or revise (say exactly what's missing) and tell the requester; a decline / expiry / failure → re-plan (another worker, smaller scope) or tell the requester; a question → answer it if you can, else ask the requester; a risk → tell the requester what, why, the options and your recommendation.
+  - Never let a deadline pass silently. If a wake-up needs no message to anyone, reply with exactly NO_REPLY.
 - Your final message is sent to the chat as your reply. send_message posts an extra message mid-turn (e.g. a quick acknowledgement before a slow lookup).
 `)
 	if len(b.workers.Templates(b.scope)) > 0 {
@@ -101,6 +110,17 @@ func (b *Brain) turnPrompt(t hub.Turn, inlineSystem, inlineHistory bool) string 
 	sc := b.scope
 	sc.Caller = t.Caller
 	sb.WriteString(b.workers.ContextSummary(sc, 2))
+	if b.pm != nil {
+		if t.Caller.Privileged() {
+			if br := b.pm.Briefing(context.Background(), app.BriefingOptions{}); br != "" {
+				sb.WriteString("\n" + br + "\n")
+			}
+		} else if id, ok := b.pm.WorkerFor(t.Caller.ID, t.Caller.UnionID, t.Caller.Email); ok {
+			if v := b.pm.AssigneeView(id); v != "" {
+				fmt.Fprintf(&sb, "\n%s 是 worker（%s），名下有来自主人的委托（他只能看到这些）：\n%s他的回复（接下 / 不接 / 改时间 / 进展 / 提问 / 交付 / 选择）用 respond 登记，然后简短确认。\n", t.Caller.Display(), id, v)
+			}
+		}
+	}
 	{
 		if ts := b.workers.ActiveTasksFor(t.Conv.Key); len(ts) > 0 {
 			sb.WriteString("\nopen tasks from this conversation:\n")
@@ -145,6 +165,10 @@ func renderItems(items []hub.Item) string {
 		ts := it.At.Format("15:04")
 		if it.Kind == hub.KindTaskEvent {
 			lines = append(lines, fmt.Sprintf("[%s][系统事件·任务回报]\n%s", ts, it.Text))
+			continue
+		}
+		if it.Kind == hub.KindPM {
+			lines = append(lines, fmt.Sprintf("[%s][系统事件·项目]\n%s", ts, it.Text))
 			continue
 		}
 		if it.Kind == hub.KindSchedule {

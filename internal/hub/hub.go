@@ -360,6 +360,17 @@ func (h *Hub) SendTo(ctx context.Context, convKey, text string) error {
 	return err
 }
 
+// OwnerConv is the conversation key of the owner's private chat ("" until
+// the owner has talked to the bot).
+func (h *Hub) OwnerConv() string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for pname, chat := range h.ownerChat {
+		return h.convKey(pname, chat)
+	}
+	return ""
+}
+
 // NotifyOwner sends a message straight to the owner's private chat.
 func (h *Hub) NotifyOwner(ctx context.Context, text string) error {
 	h.mu.Lock()
@@ -522,7 +533,7 @@ func (h *Hub) runTurn(ctx context.Context, l *lane) {
 	slog.Info("turn end", "conv", conv.Key, "dur", dur)
 	h.opts.Audit.Record(audit.Event{Type: audit.TurnEnd, Platform: conv.Platform, Conv: conv.Key, User: &caller,
 		Text: audit.Clip(reply, 4000), Error: errString(err), Duration: dur.String()})
-	if strings.TrimSpace(reply) == "" {
+	if r := strings.TrimSpace(reply); r == "" || r == "NO_REPLY" {
 		return
 	}
 	if p := h.platforms[conv.Platform]; p != nil {

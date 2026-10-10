@@ -25,10 +25,10 @@ func TestWorkerTemplateTools(t *testing.T) {
 	if _, err := r.Call(ctx, member, "worker_create", map[string]any{"template": "scratch", "purpose": "x"}); Kind(err) != KindPermission {
 		t.Fatalf("member worker_create: %v", err)
 	}
-	if _, err := r.Call(ctx, member, "delegate", map[string]any{"template": "scratch", "instruction": "x"}); Kind(err) != KindPermission {
+	if _, err := r.Call(ctx, member, "agent_task", map[string]any{"template": "scratch", "instruction": "x"}); Kind(err) != KindPermission {
 		t.Fatalf("member delegate with template: %v", err)
 	}
-	out, err := r.Call(ctx, owner, "delegate", map[string]any{"template": "scratch", "worker": "exp", "purpose": "try the new parser", "instruction": "benchmark it"})
+	out, err := r.Call(ctx, owner, "agent_task", map[string]any{"template": "scratch", "worker": "exp", "purpose": "try the new parser", "instruction": "benchmark it"})
 	if err != nil || !strings.Contains(out, "Created worker exp from template scratch") || !strings.Contains(out, "on worker exp") {
 		t.Fatalf("delegate with template: %v %s", err, out)
 	}

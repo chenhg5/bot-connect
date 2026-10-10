@@ -79,10 +79,10 @@ func TestSessionsOnlyThroughWorkers(t *testing.T) {
 	if out, err := call(t, r, tc, "read_session", map[string]any{"session": "s-listed"}); err != nil || !strings.Contains(out, "secret of s-listed") {
 		t.Fatalf("read_session on an allowed session: %v %s", err, out)
 	}
-	if _, err := call(t, r, tc, "delegate", map[string]any{"session": "s-private", "instruction": "x"}); err == nil {
+	if _, err := call(t, r, tc, "agent_task", map[string]any{"session": "s-private", "instruction": "x"}); err == nil {
 		t.Fatal("delegate must refuse a session no worker covers")
 	}
-	out, err := call(t, r, tc, "delegate", map[string]any{"session": "s-listed", "instruction": "x"})
+	out, err := call(t, r, tc, "agent_task", map[string]any{"session": "s-listed", "instruction": "x"})
 	if err != nil || !strings.Contains(out, "w#s-listed") {
 		t.Fatalf("delegate into a listed session should run on sub-worker w#s-listed: %v %s", err, out)
 	}

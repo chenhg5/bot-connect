@@ -14,6 +14,7 @@ package brain
 import (
 	"context"
 	"fmt"
+	"github.com/chenhg5/bot-connect/internal/app"
 	"log/slog"
 	"os"
 	"strings"
@@ -36,7 +37,12 @@ type Brain struct {
 	scope     worker.Scope
 	botName   string
 	ownerName string
+	pm        *app.App
 }
+
+// SetPM gives the brain the project-management core: its briefing goes into
+// every privileged turn, a worker's own assignments into theirs.
+func (b *Brain) SetPM(a *app.App) { b.pm = a }
 
 func New(cfg config.Brain, h *hub.Hub, w *worker.Manager, srv *toolserver.Server, toolNames []string, scope worker.Scope, botName, ownerName string) (*Brain, error) {
 	if err := os.MkdirAll(cfg.WorkDir, 0o700); err != nil {
