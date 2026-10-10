@@ -1,6 +1,6 @@
 # 地基：一个能同时推进多个项目的 bot
 
-> 状态：设计草案（替代 pm.md 里的对象模型；workforce / reach 的协议设计保留）。
+> 状态：设计已定稿，实现见 [domain.md](domain.md) 与 `internal/domain`、`internal/app`。
 > 原则不变（见 architecture.md）：不碰 agent loop、大脑可插拔、worker 是协议、软引导 + 硬保证。
 
 ---

@@ -3,7 +3,6 @@ package config
 
 import (
 	"fmt"
-	"github.com/chenhg5/bot-connect/internal/reach"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,8 +22,6 @@ type Config struct {
 	Workers []Worker `toml:"workers"`
 	// Templates the brain can create workers from at run time.
 	Templates []Template `toml:"templates"`
-	// People the bots may hand work to or reach (human workers).
-	People []Person `toml:"people"`
 	// Model providers for Claude Code processes (brain and workers), the same
 	// way cc-connect does it: ANTHROPIC_BASE_URL / AUTH_TOKEN / MODEL env.
 	Providers []Provider `toml:"providers"`
@@ -261,30 +258,6 @@ func (t Template) TTL() time.Duration {
 		return 24 * time.Hour
 	}
 	return t.IdleTTL.Duration
-}
-
-// Person is a human worker: who they are, how to reach them, when, and what
-// they agreed to take.
-type Person struct {
-	ID          string   `toml:"id" json:"id"`
-	Name        string   `toml:"name" json:"name"`
-	Description string   `toml:"description" json:"description,omitempty"` // what they do / are responsible for
-	Skills      []string `toml:"skills" json:"skills,omitempty"`
-	// Identities recognise their messages: a platform id, union id or email,
-	// optionally prefixed with the platform ("feishu:ou_…").
-	Identities       []string       `toml:"identities" json:"identities,omitempty"`
-	Timezone         string         `toml:"timezone" json:"timezone,omitempty"`
-	WorkHours        []reach.Window `toml:"work_hours" json:"work_hours,omitempty"`
-	QuietHours       []reach.Window `toml:"quiet_hours" json:"quiet_hours,omitempty"`
-	MaxNudgesPerDay  int            `toml:"max_nudges_per_day" json:"max_nudges_per_day,omitempty"`
-	MinNudgeInterval Duration       `toml:"min_nudge_interval" json:"min_nudge_interval,omitempty"`
-	AcceptFrom       []string       `toml:"accept_from" json:"accept_from,omitempty"` // roles / user ids (default: owner)
-	// Consent: they agreed to take work from the bot. Without it the bot can
-	// only reach them, not assign them work.
-	Consent bool          `toml:"consent" json:"consent"`
-	Contact []reach.Route `toml:"contact" json:"contact,omitempty"`
-	// Bots that may use this person (empty = all).
-	Bots []string `toml:"bots" json:"bots,omitempty"`
 }
 
 type Duration struct{ time.Duration }
@@ -528,43 +501,6 @@ func (c *Config) validate() error {
 			}
 		default:
 			return fmt.Errorf("template %s: workspace must be worktree, dir or existing", t.Name)
-		}
-	}
-	people := map[string]bool{}
-	for i := range c.People {
-		p := &c.People[i]
-		if p.ID == "" || strings.ContainsAny(p.ID, "@# ") {
-			return fmt.Errorf("people: each person needs an id without @, # or spaces")
-		}
-		if people[p.ID] || seen[p.ID] || tpls[p.ID] || p.ID == "owner" {
-			return fmt.Errorf("people: id %q is already used (or reserved)", p.ID)
-		}
-		people[p.ID] = true
-		if p.Timezone != "" {
-			if _, err := time.LoadLocation(p.Timezone); err != nil {
-				return fmt.Errorf("person %s: timezone: %v", p.ID, err)
-			}
-		}
-		for _, w := range append(append([]reach.Window{}, p.WorkHours...), p.QuietHours...) {
-			if err := w.Validate(); err != nil {
-				return fmt.Errorf("person %s: %v", p.ID, err)
-			}
-		}
-		for j := range p.Contact {
-			r := &p.Contact[j]
-			if r.Channel == "" || r.Address == "" {
-				return fmt.Errorf("person %s: each contact needs channel and address", p.ID)
-			}
-			if r.MinLevel != "" {
-				u, err := reach.ParseUrgency(r.MinLevel)
-				if err != nil {
-					return fmt.Errorf("person %s: contact %s: %v", p.ID, r.Channel, err)
-				}
-				r.MinUrgency = u
-			}
-		}
-		if len(p.Contact) == 0 {
-			return fmt.Errorf("person %s: add at least one [[people.contact]] (e.g. channel = \"feishu_dm\", address = \"ou_…\")", p.ID)
 		}
 	}
 	bots, apps := map[string]bool{}, map[string]string{}

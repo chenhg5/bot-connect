@@ -2,7 +2,7 @@
 
 > 这份文档定义 bot-connect **是什么、不是什么**，以及所有后续功能要遵守的边界。
 > 具体实现见 [design.md](design.md)（接入层）、[framework.md](framework.md)（框架 / 配置分工）、
-> [permissions.md](permissions.md)（权限）、[pm.md](pm.md)（目标 / 任务 / 风险 / 人员触达）；方向调研见 [research/2026-10-proactive-collaborator.md](research/2026-10-proactive-collaborator.md)。
+> [permissions.md](permissions.md)（权限）、[foundation.md](foundation.md)（产品设计）、[domain.md](domain.md)（领域设计）；方向调研见 [research/2026-10-proactive-collaborator.md](research/2026-10-proactive-collaborator.md)。
 
 ## 1. 原则
 

@@ -51,7 +51,10 @@ type Worker struct {
 	Capability  []Capability `json:"capabilities,omitempty"`
 	Authority   []Authority  `json:"authority,omitempty"`
 	Physical    bool         `json:"physical,omitempty"` // can act in the real world (calls, presence, signatures…)
-	Version     int          `json:"version"`
+	// Identities recognise a person's messages on chat platforms: user id,
+	// union id or email, optionally prefixed ("feishu:ou_…", "email:a@b.com").
+	Identities []string `json:"identities,omitempty"`
+	Version    int      `json:"version"`
 }
 
 type Interaction struct {
@@ -125,6 +128,21 @@ func (w Worker) Validate() error {
 		return fmt.Errorf("worker %s: %w", w.ID, err)
 	}
 	return nil
+}
+
+// Is reports whether one of the given platform identities is this worker.
+func (w Worker) Is(ids ...string) bool {
+	for _, mine := range w.Identities {
+		if _, rest, ok := strings.Cut(mine, ":"); ok {
+			mine = rest
+		}
+		for _, id := range ids {
+			if id != "" && strings.EqualFold(id, mine) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // Can reports whether the worker has a capability that covers need.
