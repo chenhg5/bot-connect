@@ -17,8 +17,17 @@ $arch = switch ($env:PROCESSOR_ARCHITECTURE) {
 
 $version = $env:BOT_CONNECT_VERSION
 if (-not $version) {
-  # /releases/latest skips pre-releases, so take the newest entry of the list.
-  $version = (Invoke-RestMethod "https://api.github.com/repos/$repo/releases?per_page=1")[0].tag_name
+  # Newest release, pre-releases included (/releases/latest skips them). The API
+  # is rate-limited per IP when unauthenticated; fall back to the releases feed.
+  try {
+    $headers = @{}
+    if ($env:GITHUB_TOKEN) { $headers["Authorization"] = "Bearer $env:GITHUB_TOKEN" }
+    $version = (Invoke-RestMethod "https://api.github.com/repos/$repo/releases?per_page=1" -Headers $headers)[0].tag_name
+  } catch {
+    $feed = (Invoke-WebRequest "https://github.com/$repo/releases.atom" -UseBasicParsing).Content
+    if ($feed -match '/releases/tag/([^"<]+)') { $version = $Matches[1] }
+  }
+  if (-not $version) { throw "could not determine the latest version (set BOT_CONNECT_VERSION=vX.Y.Z)" }
 }
 
 $name = "bot-connect-$version-windows-$arch"

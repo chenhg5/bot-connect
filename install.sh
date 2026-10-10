@@ -30,10 +30,18 @@ esac
 
 version="${BOT_CONNECT_VERSION:-}"
 if [ -z "$version" ]; then
-  # /releases/latest skips pre-releases, so take the newest entry of the list.
-  version=$(curl -fsSL "https://api.github.com/repos/$REPO/releases?per_page=1" |
-    sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -n 1)
-  [ -n "$version" ] || die "could not determine the latest version (set BOT_CONNECT_VERSION)"
+  # Newest release, pre-releases included (/releases/latest skips them).
+  # The API is rate-limited per IP when unauthenticated, so fall back to the
+  # releases feed, which isn't.
+  auth=""
+  [ -n "${GITHUB_TOKEN:-}" ] && auth="Authorization: Bearer $GITHUB_TOKEN"
+  version=$(curl -fsSL ${auth:+-H "$auth"} "https://api.github.com/repos/$REPO/releases?per_page=1" 2>/dev/null |
+    sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -n 1) || true
+  if [ -z "$version" ]; then
+    version=$(curl -fsSL "https://github.com/$REPO/releases.atom" 2>/dev/null |
+      sed -n 's|.*/releases/tag/\([^"<]*\).*|\1|p' | head -n 1) || true
+  fi
+  [ -n "$version" ] || die "could not determine the latest version (set BOT_CONNECT_VERSION=vX.Y.Z)"
 fi
 
 name="bot-connect-$version-$os-$arch"
