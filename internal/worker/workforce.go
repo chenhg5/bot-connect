@@ -17,6 +17,9 @@ type AgentWorker struct {
 	Name   string
 	Bot    string
 	Events workforce.Events
+	// Lookup finds the assignment running a task (by Assignment.Ref) when
+	// the in-memory map was lost to a restart.
+	Lookup func(taskID string) string
 
 	mu      sync.Mutex
 	byTask  map[string]string // task id → assignment id
@@ -101,7 +104,7 @@ func (w *AgentWorker) Offer(ctx context.Context, a workforce.Assignment) error {
 	w.mu.Unlock()
 	if w.Events != nil {
 		now := time.Now()
-		_ = w.Events.Emit(a.ID, workforce.Event{Type: workforce.EvAccept, At: now, Note: "queued as " + t.ID})
+		_ = w.Events.Emit(a.ID, workforce.Event{Type: workforce.EvAccept, At: now, Note: "queued as " + t.ID, Ref: t.ID})
 		_ = w.Events.Emit(a.ID, workforce.Event{Type: workforce.EvStart, At: now})
 	}
 	return nil
@@ -112,6 +115,9 @@ func (w *AgentWorker) Notify(ctx context.Context, a workforce.Assignment, ev wor
 	w.mu.Lock()
 	tid := w.byAssig[a.ID]
 	w.mu.Unlock()
+	if tid == "" {
+		tid = a.Ref
+	}
 	switch ev.Type {
 	case workforce.EvCancel:
 		if tid == "" {
@@ -126,24 +132,29 @@ func (w *AgentWorker) Notify(ctx context.Context, a workforce.Assignment, ev wor
 }
 
 // Finished turns a finished task into deliver / fail events. Call it from
-// the manager's OnFinish.
-func (w *AgentWorker) Finished(t Task) {
+// the manager's OnFinish; it reports whether the task belonged to an
+// assignment.
+func (w *AgentWorker) Finished(t Task) bool {
 	w.mu.Lock()
 	aid := w.byTask[t.ID]
 	delete(w.byTask, t.ID)
 	delete(w.byAssig, aid)
 	w.mu.Unlock()
+	if aid == "" && w.Lookup != nil {
+		aid = w.Lookup(t.ID) // after a restart: find it by the persisted ref
+	}
 	if aid == "" || w.Events == nil {
-		return
+		return aid != ""
 	}
 	ev := workforce.Event{At: t.EndedAt}
 	switch t.Status {
 	case StatusSucceeded:
 		ev.Type, ev.Result = workforce.EvDeliver, t.Result
 	case StatusCancelled:
-		return // the requester cancelled; the assignment already says so
+		return true // the requester cancelled; the assignment already says so
 	default:
 		ev.Type, ev.Note = workforce.EvFail, t.Error
 	}
 	_ = w.Events.Emit(aid, ev)
+	return true
 }

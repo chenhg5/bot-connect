@@ -95,6 +95,7 @@ type Event struct {
 	Due      *time.Time    `json:"due,omitempty"`
 	Result   string        `json:"result,omitempty"`
 	Evidence []string      `json:"evidence,omitempty"`
+	Ref      string        `json:"ref,omitempty"` // worker-side id (e.g. the agent task id)
 }
 
 // Brief is what the worker is asked to do. It must stand on its own: the
@@ -129,6 +130,7 @@ type Assignment struct {
 	CreatedAt time.Time     `json:"created_at"`
 	UpdatedAt time.Time     `json:"updated_at"`            // last event of any kind
 	Progress  time.Time     `json:"progress_at,omitempty"` // last sign of life from the worker
+	Ref       string        `json:"ref,omitempty"`         // worker-side id, e.g. the agent task running it
 }
 
 // transitions: event → (allowed from-statuses → resulting status). Events
@@ -215,6 +217,9 @@ func (a *Assignment) Apply(ev Event) error {
 	switch ev.Type {
 	case EvAccept, EvCounter, EvStart, EvProgress, EvAsk, EvDeliver, EvResume:
 		a.Progress = ev.At // the worker showed signs of life
+	}
+	if ev.Ref != "" {
+		a.Ref = ev.Ref
 	}
 	a.UpdatedAt = ev.At
 	a.History = append(a.History, ev)

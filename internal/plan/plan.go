@@ -135,3 +135,24 @@ type Risk struct {
 	At       time.Time  `json:"at"`
 	Notified time.Time  `json:"notified,omitempty"` // when the owner was told
 }
+
+// Role is what a worker is responsible for within a scope and a period:
+// company-wide ("org": 前端负责人, 法务对接) or within one goal / project
+// (本月项目的设计负责人, until the 31st). The brain uses roles to know whom
+// to go to for what, at this moment.
+type Role struct {
+	ID     string     `json:"id"`
+	Bot    string     `json:"bot,omitempty"`
+	Worker string     `json:"worker"`
+	Scope  string     `json:"scope"` // "org" or a goal id
+	Title  string     `json:"title"`
+	Duties []string   `json:"duties,omitempty"` // what to go to them for
+	From   *time.Time `json:"from,omitempty"`
+	Until  *time.Time `json:"until,omitempty"`
+	Note   string     `json:"note,omitempty"`
+}
+
+// Active reports whether the role applies at t.
+func (r Role) Active(t time.Time) bool {
+	return (r.From == nil || !t.Before(*r.From)) && (r.Until == nil || t.Before(*r.Until))
+}

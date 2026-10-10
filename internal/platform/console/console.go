@@ -53,6 +53,11 @@ func (p *Platform) Start(ctx context.Context, onMessage func(hub.Inbound)) error
 	return nil
 }
 
+// SendUser prints a direct message to a user.
+func (p *Platform) SendUser(ctx context.Context, userID, text string) (string, error) {
+	return fmt.Sprintf("console-%d", time.Now().UnixNano()), p.Send(ctx, "user:"+userID, text)
+}
+
 func (p *Platform) Send(ctx context.Context, chatID, text string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()

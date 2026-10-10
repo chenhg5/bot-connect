@@ -26,7 +26,8 @@ const (
 	SMS               Channel = "sms"
 	Phone             Channel = "phone" // voice call through a provider
 	Webhook           Channel = "webhook"
-	A2A               Channel = "a2a" // an Agent2Agent endpoint (bots)
+	A2A               Channel = "a2a"        // an Agent2Agent endpoint (bots)
+	OwnerChat         Channel = "owner_chat" // the bot owner's private chat with the bot
 )
 
 // Urgency of a message, in increasing order.

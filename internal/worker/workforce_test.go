@@ -28,7 +28,7 @@ func TestAgentWorkerSpeaksProtocol(t *testing.T) {
 	}
 	m.workers["w"].runner = &sleepRunner{}
 	aw := &AgentWorker{M: m, Name: "w", Bot: "b"}
-	m.OnFinish = aw.Finished
+	m.OnFinish = func(t Task) { aw.Finished(t) }
 	a := &workforce.Assignment{ID: "a1", Worker: "w", Brief: workforce.Brief{Goal: "do it", Done: "it is done"}}
 	_ = a.Apply(workforce.Event{Type: workforce.EvOffer})
 	ev := &collect{a: map[string]*workforce.Assignment{"a1": a}}

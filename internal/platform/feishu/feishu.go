@@ -140,6 +140,38 @@ func extractText(msgType, content string) string {
 }
 
 // Send posts a markdown card so replies render nicely.
+// SendUser sends a direct message to a user by open_id (ou_…), union_id
+// (on_…) or email.
+func (p *Platform) SendUser(ctx context.Context, userID, text string) (string, error) {
+	card := map[string]any{
+		"config":   map[string]any{"wide_screen_mode": true},
+		"elements": []any{map[string]any{"tag": "markdown", "content": text}},
+	}
+	b, _ := json.Marshal(card)
+	idType := larkim.ReceiveIdTypeOpenId
+	switch {
+	case strings.Contains(userID, "@"):
+		idType = larkim.ReceiveIdTypeEmail
+	case strings.HasPrefix(userID, "on_"):
+		idType = larkim.ReceiveIdTypeUnionId
+	}
+	resp, err := p.client.Im.Message.Create(ctx, larkim.NewCreateMessageReqBuilder().
+		ReceiveIdType(idType).
+		Body(larkim.NewCreateMessageReqBodyBuilder().
+			ReceiveId(userID).MsgType(larkim.MsgTypeInteractive).Content(string(b)).Build()).
+		Build())
+	if err != nil {
+		return "", err
+	}
+	if !resp.Success() {
+		return "", fmt.Errorf("feishu send code=%d msg=%s", resp.Code, resp.Msg)
+	}
+	if resp.Data != nil && resp.Data.MessageId != nil {
+		return *resp.Data.MessageId, nil
+	}
+	return "", nil
+}
+
 func (p *Platform) Send(ctx context.Context, chatID, text string) error {
 	card := map[string]any{
 		"config":   map[string]any{"wide_screen_mode": true},

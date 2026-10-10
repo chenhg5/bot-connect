@@ -253,6 +253,37 @@ func (p *Platform) appID(ctx context.Context) (string, error) {
 	return c.AppID, nil
 }
 
+// SendUser sends a direct message to a user by open_id (ou_…), union_id
+// (on_…) or email.
+func (p *Platform) SendUser(ctx context.Context, userID, text string) (string, error) {
+	card, _ := json.Marshal(map[string]any{
+		"config":   map[string]any{"wide_screen_mode": true},
+		"elements": []any{map[string]any{"tag": "markdown", "content": text}},
+	})
+	body, _ := json.Marshal(map[string]any{"receive_id": userID, "msg_type": "interactive", "content": string(card)})
+	out, err := p.api(ctx, "POST", "/open-apis/im/v1/messages", fmt.Sprintf(`{"receive_id_type":%q}`, receiveIDType(userID)), string(body))
+	if err != nil {
+		return "", err
+	}
+	var r struct {
+		Data struct {
+			MessageID string `json:"message_id"`
+		} `json:"data"`
+	}
+	_ = json.Unmarshal(out, &r)
+	return r.Data.MessageID, nil
+}
+
+func receiveIDType(id string) string {
+	switch {
+	case strings.Contains(id, "@"):
+		return "email"
+	case strings.HasPrefix(id, "on_"):
+		return "union_id"
+	}
+	return "open_id"
+}
+
 func (p *Platform) Send(ctx context.Context, chatID, text string) error {
 	card, _ := json.Marshal(map[string]any{
 		"config":   map[string]any{"wide_screen_mode": true},

@@ -48,10 +48,17 @@ type Platform interface {
 	Ack(ctx context.Context, messageID string)
 }
 
+// UserSender is implemented by platforms that can message a user directly
+// (not only reply in a chat): used to reach people the bot hands work to.
+type UserSender interface {
+	SendUser(ctx context.Context, userID, text string) (messageID string, err error)
+}
+
 const (
 	KindMessage   = "message"
 	KindTaskEvent = "task_event"
 	KindSchedule  = "schedule"
+	KindPM        = "pm" // project management: assignment updates, risks, follow-ups
 )
 
 type Item struct {
@@ -66,7 +73,7 @@ func (it Item) priority() int {
 	switch {
 	case it.Kind == KindMessage && it.From.Privileged():
 		return 0
-	case it.Kind == KindTaskEvent || it.Kind == KindSchedule:
+	case it.Kind == KindTaskEvent || it.Kind == KindSchedule || it.Kind == KindPM:
 		return 1
 	}
 	return 2
@@ -263,6 +270,45 @@ func (h *Hub) PostScheduled(convKey, id, label, prompt string, creator worker.Re
 	text := fmt.Sprintf("定时任务 %s「%s」触发，执行：\n%s", id, label, prompt)
 	h.enqueue(convKey, Item{Kind: KindSchedule, Text: text, From: creator, At: time.Now(), ScheduleID: id})
 	return true
+}
+
+// PostEvent delivers a project-management event (assignment update, risk,
+// follow-up) into a conversation. It returns false if the conversation is
+// unknown.
+func (h *Hub) PostEvent(convKey, text string, about worker.Requester) bool {
+	h.mu.Lock()
+	_, ok := h.convs[convKey]
+	h.mu.Unlock()
+	if !ok {
+		return false
+	}
+	h.enqueue(convKey, Item{Kind: KindPM, Text: text, From: about, At: time.Now()})
+	return true
+}
+
+// SendUser messages a user directly on the given platform (falling back to
+// any platform that can, e.g. the console). It returns the message id.
+func (h *Hub) SendUser(ctx context.Context, platform, userID, text string) (string, error) {
+	h.mu.Lock()
+	var us UserSender
+	name := platform
+	if p, ok := h.platforms[platform].(UserSender); ok {
+		us = p
+	} else {
+		for n, p := range h.platforms {
+			if s, ok := p.(UserSender); ok {
+				us, name = s, n
+				break
+			}
+		}
+	}
+	h.mu.Unlock()
+	if us == nil {
+		return "", fmt.Errorf("no platform can message users directly")
+	}
+	id, err := us.SendUser(ctx, userID, text)
+	h.opts.Audit.Record(audit.Event{Type: audit.Outbound, Platform: name, Conv: "user:" + userID, Text: audit.Clip(text, 2000), Error: errString(err)})
+	return id, err
 }
 
 // BrainSession returns the brain session to resume for c, if it was created
