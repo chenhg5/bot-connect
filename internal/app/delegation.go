@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/chenhg5/bot-connect/internal/domain/delegation"
+	"github.com/chenhg5/bot-connect/internal/domain/inbox"
 	"github.com/chenhg5/bot-connect/internal/domain/planning"
 	"github.com/chenhg5/bot-connect/internal/domain/portfolio"
 	. "github.com/chenhg5/bot-connect/internal/domain/shared"
@@ -366,11 +367,15 @@ func (a *App) afterWorkerEvent(ctx context.Context, as delegation.Assignment, r 
 	default:
 		return
 	}
-	var ev *Event
-	if len(evs) > 0 {
-		ev = &evs[0]
-	}
-	a.wake(ctx, Trigger{Kind: "event", Conv: as.Conv, Project: as.Project, Text: text, Event: ev, About: as.Requester})
+	_, _, _ = a.Ingest(ctx, SignalSpec{Dedupe: fmt.Sprintf("assignment:%s:%s:%d", as.ID, r.Action, len(as.History)), Source: inbox.WorkerReply,
+		Reason: reasonOf(r.Action), Actor: Actor{Worker: as.Worker, Role: RoleSystem, Via: "worker"}, ActorName: string(as.Worker),
+		Summary: oneLine(text, 120), Body: text, Refs: inbox.Refs{Project: as.Project, Item: as.Item, Assignment: as.ID, Worker: as.Worker},
+		ReplyTo: inbox.ReplyTo{Conv: as.Conv}})
+}
+
+func reasonOf(action string) string {
+	return map[string]string{"accept": "accepted", "decline": "declined", "counter": "countered", "ask": "asked", "deliver": "delivered",
+		"answer": "answered", "fail": "failed", "release": "released", "progress": "progressed"}[action]
 }
 
 func (a *App) isAgent(id WorkerID) bool {

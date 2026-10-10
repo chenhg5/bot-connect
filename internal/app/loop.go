@@ -4,11 +4,10 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"strings"
 	"time"
 
-	"github.com/chenhg5/bot-connect/internal/domain/attention"
 	"github.com/chenhg5/bot-connect/internal/domain/delegation"
+	"github.com/chenhg5/bot-connect/internal/domain/inbox"
 	. "github.com/chenhg5/bot-connect/internal/domain/shared"
 	"github.com/chenhg5/bot-connect/internal/domain/workforce"
 )
@@ -39,7 +38,8 @@ func (a *App) Run(ctx context.Context, every time.Duration) {
 // what to do about a problem; it makes sure someone hears about it in time.
 func (a *App) Tick(ctx context.Context) {
 	a.followUps(ctx)
-	a.raise(ctx)
+	a.raiseFindings(ctx)
+	a.tickInbox(ctx)
 }
 
 func (a *App) followUps(ctx context.Context) {
@@ -116,71 +116,14 @@ func (a *App) expire(ctx context.Context, as delegation.Assignment) {
 		return append(evs, syncItem(s, x, "expire", a.now(), System("rule:expire"))...), nil
 	})
 	if err == nil {
-		a.wake(ctx, Trigger{Kind: "event", Conv: as.Conv, Project: as.Project, About: as.Requester,
-			Text: fmt.Sprintf("%s（%s，%s）两天没有回应，已过期，事项回到待分派。", as.ID, as.Worker, oneLine(as.Brief.Goal, 60))})
+		text := fmt.Sprintf("%s（%s，%s）两天没有回应，已过期，事项回到待分派。", as.ID, as.Worker, oneLine(as.Brief.Goal, 60))
+		_, _, _ = a.Ingest(ctx, SignalSpec{Dedupe: "assignment:" + string(as.ID) + ":expired", Source: inbox.WorkerReply, Reason: "expired",
+			Actor: System("rule:expire"), Summary: text, Body: text, ReplyTo: inbox.ReplyTo{Conv: as.Conv},
+			Refs: inbox.Refs{Project: as.Project, Item: as.Item, Assignment: as.ID, Worker: as.Worker}})
 	}
 }
 
-// raise wakes the brain once per new (or worsened) signal, grouped by
-// project, and escalates high signals nobody handled within EscalateAfter.
-func (a *App) raise(ctx context.Context) {
-	ag, c := a.Agenda(ctx)
-	now := c.Now
-	current := map[string]attention.Scored{}
-	for _, tier := range [][]attention.Scored{ag.Now, ag.Today, ag.Watch} {
-		for _, s := range tier {
-			current[s.Key] = s
-		}
-	}
-	var fresh []attention.Scored
-	var escalate []attention.Scored
-	_, err := a.commit(ctx, func(s *State) ([]Event, error) {
-		for k := range s.Raised {
-			if _, ok := current[k]; !ok {
-				delete(s.Raised, k) // gone (or handled): may be raised again later
-			}
-		}
-		for k, sig := range current {
-			if sig.Level < attention.Medium {
-				continue
-			}
-			r, seen := s.Raised[k]
-			switch {
-			case !seen || sig.Level > r.Level:
-				s.Raised[k] = Raised{Level: sig.Level, At: now}
-				fresh = append(fresh, sig)
-			case sig.Level == attention.High && !r.Escalated && now.Sub(r.At) >= EscalateAfter:
-				r.Escalated = true
-				s.Raised[k] = r
-				escalate = append(escalate, sig)
-			}
-		}
-		return nil, nil
-	})
-	if err != nil {
-		return
-	}
-	byProject := map[ProjectID][]attention.Signal{}
-	for _, s := range fresh {
-		byProject[s.Project] = append(byProject[s.Project], s.Signal)
-	}
-	projects := make([]ProjectID, 0, len(byProject))
-	for p := range byProject {
-		projects = append(projects, p)
-	}
-	sort.Slice(projects, func(i, j int) bool { return projects[i] < projects[j] })
-	for _, p := range projects {
-		sigs := byProject[p]
-		sort.Slice(sigs, func(i, j int) bool { return sigs[i].Level > sigs[j].Level })
-		var lines []string
-		for _, s := range sigs {
-			lines = append(lines, fmt.Sprintf("- [%s %s] %s", s.Kind, s.Level, s.Summary))
-		}
-		a.wake(ctx, Trigger{Kind: "rule", Conv: c.Projects[p].Home, Project: p, Signals: sigs,
-			Text: "需要注意：\n" + strings.Join(lines, "\n")})
-	}
-	for _, s := range escalate {
-		a.wake(ctx, Trigger{Kind: "rule", Conv: "", Project: s.Project, Signals: []attention.Signal{s.Signal},
-			Text: fmt.Sprintf("⚠️ 已 %s 没有处理：%s", EscalateAfter, s.Summary)})
-	}
+// delegationStub carries refs to a driver for messages not tied to an assignment.
+func delegationStub(r inbox.Refs) delegation.Assignment {
+	return delegation.Assignment{ID: r.Assignment, Item: r.Item, Project: r.Project}
 }

@@ -79,6 +79,8 @@ func (d *Driver) Notify(ctx context.Context, w workforce.Worker, a delegation.As
 		text = fmt.Sprintf("%s 不用做了，已取消。%s", a.ID, n.Text)
 	case "redated", "counter_accepted":
 		text = fmt.Sprintf("%s：%s", a.ID, n.Text)
+	case "message":
+		text = n.Text
 	case "nudge":
 		text = fmt.Sprintf("⏰ 提醒 %s：%s\n%s", a.ID, n.Text, oneLine(a.Brief.Goal, 120))
 	default:

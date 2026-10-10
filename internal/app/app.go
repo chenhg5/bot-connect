@@ -22,6 +22,8 @@ type App struct {
 	Sink      EventSink
 	Attention attention.Service
 	Staffing  insight.Staffing
+	Policy    WakePolicy
+	Triage    Triage // optional L1 judgment on incoming signals
 	Log       *slog.Logger
 }
 
@@ -31,7 +33,7 @@ func New(store Store, clock Clock) *App {
 		clock = RealClock{}
 	}
 	return &App{Store: store, Clock: clock, Drivers: map[string]WorkerDriver{}, Attention: attention.Default(),
-		Staffing: insight.DefaultStaffing(), Log: slog.Default()}
+		Staffing: insight.DefaultStaffing(), Policy: DefaultWakePolicy(), Log: slog.Default()}
 }
 
 // RegisterDriver makes a driver available under a key (a worker kind, or a
@@ -87,17 +89,11 @@ func (a *App) World(ctx context.Context) *world.World {
 	return w
 }
 
-// Agenda computes what needs attention now (handled signals suppressed).
+// Agenda is what the rules find right now, scored and tiered (the
+// findings; what the brain must act on is in the inbox).
 func (a *App) Agenda(ctx context.Context) (attention.Agenda, *attention.Context) {
 	c := attention.NewContext(a.World(ctx))
-	var res map[string]attention.Resolution
-	a.Store.Read(func(s *State) {
-		res = make(map[string]attention.Resolution, len(s.Resolutions))
-		for k, v := range s.Resolutions {
-			res[k] = v
-		}
-	})
-	return a.Attention.Build(c, res), c
+	return a.Attention.Build(c, nil), c
 }
 
 // Progress of a project.
@@ -121,10 +117,4 @@ func (a *App) commit(ctx context.Context, fn func(s *State) ([]Event, error)) ([
 		a.Sink.Publish(ctx, evs)
 	}
 	return evs, nil
-}
-
-func (a *App) wake(ctx context.Context, t Trigger) {
-	if a.Waker != nil {
-		a.Waker.Wake(ctx, t)
-	}
 }

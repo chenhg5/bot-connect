@@ -18,6 +18,9 @@ import (
 )
 
 // BriefingOptions shape the page the brain reads.
+//
+// The briefing is the full page (the brief tool); a wake-up carries only its
+// focus, the inbox digest and a compact overview (Overview).
 type BriefingOptions struct {
 	Focus    ProjectID // render this project's card in full ("" = all active projects, compact)
 	MaxItems int       // open items per project (default 8)
@@ -33,31 +36,15 @@ func (a *App) Briefing(ctx context.Context, o BriefingOptions) string {
 		o.MaxItems = 8
 	}
 	var b strings.Builder
+	if dig := a.InboxDigest(nil, 10); dig != "" {
+		b.WriteString("收件箱（待处理的信号，按分数；处理后用 signal_update 记下结果，或 reply 回复来源）：\n" + dig + "\n")
+	}
 	if len(ag.Now)+len(ag.Today)+len(ag.Watch) > 0 {
-		b.WriteString("agenda（框架按规则算出，按分数排序）：\n")
-		if len(ag.Now) > 0 {
-			b.WriteString("Now（这次必须处理，用工具给出结果：处理掉 / 已行动并等对方 / 推迟到某时 / 交给主人；再用 resolve 记下）：\n")
-			for i, s := range ag.Now {
-				fmt.Fprintf(&b, "%d. [%s·%s] %s  key=%s 分=%.1f\n", i+1, s.Kind, s.Level, s.Summary, s.Key, s.Score)
-				if len(s.Suggest) > 0 {
-					fmt.Fprintf(&b, "   建议：%s\n", strings.Join(s.Suggest, " / "))
-				}
+		b.WriteString("规则当前发现（算出来的，已进收件箱的不必重复处理）：\n")
+		for _, tier := range [][]attention.Scored{ag.Now, ag.Today, ag.Watch} {
+			for _, x := range tier {
+				fmt.Fprintf(&b, "- [%s·%s] %s\n", x.Kind, x.Level, x.Summary)
 			}
-		}
-		if len(ag.Today) > 0 {
-			b.WriteString("Today：")
-			var parts []string
-			for _, s := range ag.Today {
-				parts = append(parts, s.Summary+"（"+s.Key+"）")
-			}
-			b.WriteString(strings.Join(parts, "；") + "\n")
-		}
-		if len(ag.Watch) > 0 {
-			var parts []string
-			for _, s := range ag.Watch {
-				parts = append(parts, s.Summary)
-			}
-			b.WriteString("Watch：" + strings.Join(parts, "；") + "\n")
 		}
 	}
 	sigs := a.Attention.Signals(c)
@@ -493,4 +480,43 @@ func parseChinese(s string, now time.Time) (time.Time, bool) {
 		}
 	}
 	return date.Add(time.Duration(h)*time.Hour + time.Duration(m)*time.Minute), true
+}
+
+// Overview is the compact state for a wake-up: one line per active project
+// and the roster's ids and names; details come from tools.
+func (a *App) Overview(ctx context.Context) string {
+	_, c := a.Agenda(ctx)
+	w := c.World
+	sigs := a.Attention.Signals(c)
+	var b strings.Builder
+	var ids []ProjectID
+	for id, p := range w.Projects {
+		if id != OrgProject && p.Open() {
+			ids = append(ids, id)
+		}
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	for _, id := range ids {
+		p := w.Projects[id]
+		pr := insight.ProjectProgress(w, id, c.Forecast, attention.RiskCount(sigs, id))
+		fmt.Fprintf(&b, "- 项目 %s「%s」%s 健康度%s 进度 %.0f%%（%d 件未完成）", id, p.Title, p.Priority, healthZh(pr.Health), pr.Done*100, pr.Open)
+		if p.Timebox.Until != nil {
+			b.WriteString(" 截止 " + p.Timebox.Until.Format("01-02"))
+		}
+		b.WriteString("\n")
+	}
+	var people []string
+	for id, wk := range w.Workers {
+		n := string(id)
+		if wk.Name != "" && wk.Name != string(id) {
+			n += "「" + wk.Name + "」"
+		}
+		if wk.Kind.Agentic() {
+			n += "(agent)"
+		}
+		people = append(people, n)
+	}
+	sort.Strings(people)
+	b.WriteString("人力：" + strings.Join(people, "、") + "（详情用 brief / find_people）\n")
+	return b.String()
 }

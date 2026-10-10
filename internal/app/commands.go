@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chenhg5/bot-connect/internal/domain/attention"
 	"github.com/chenhg5/bot-connect/internal/domain/delegation"
 	"github.com/chenhg5/bot-connect/internal/domain/planning"
 	"github.com/chenhg5/bot-connect/internal/domain/portfolio"
@@ -315,40 +314,6 @@ func (a *App) CompleteItem(ctx context.Context, by Actor, id ItemID) error {
 			return nil, err
 		}
 		s.Items[id] = it
-		return evs, nil
-	})
-	return err
-}
-
-// ---- attention ----
-
-// Resolve records how a signal was handled.
-func (a *App) Resolve(ctx context.Context, by Actor, key string, o attention.Outcome, until *time.Time, note string) error {
-	if err := requirePrivileged(by, "handle the agenda"); err != nil {
-		return err
-	}
-	c := attention.NewContext(a.World(ctx))
-	var sig *attention.Signal
-	for _, x := range a.Attention.Signals(c) {
-		if x.Key == key {
-			x := x
-			sig = &x
-		}
-	}
-	_, err := a.commit(ctx, func(s *State) ([]Event, error) {
-		target := attention.Signal{Key: key, Level: attention.Low}
-		if sig != nil {
-			target = *sig
-		} else if r, ok := s.Raised[key]; ok {
-			target.Level = r.Level
-		} else if !strings.Contains(key, ":") {
-			return nil, NotFound("no signal %q", key)
-		}
-		r, evs, err := attention.Resolve(target, o, until, note, a.now(), by)
-		if err != nil {
-			return nil, err
-		}
-		s.Resolutions[key] = r
 		return evs, nil
 	})
 	return err

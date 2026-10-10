@@ -26,7 +26,7 @@ func TestPMToolsEndToEnd(t *testing.T) {
 			return "m", nil
 		})}})
 	var wakes []string
-	pm.Waker = app.WakerFunc(func(_ context.Context, tr app.Trigger) { wakes = append(wakes, tr.Text) })
+	pm.Waker = app.WakerFunc(func(_ context.Context, w app.Wake) { wakes = append(wakes, app.FocusText(w.Signals)) })
 	must := func(err error) {
 		t.Helper()
 		if err != nil {

@@ -58,7 +58,8 @@ const (
 	KindMessage   = "message"
 	KindTaskEvent = "task_event"
 	KindSchedule  = "schedule"
-	KindPM        = "pm" // project management: assignment updates, risks, follow-ups
+	KindPM        = "pm"     // project management: assignment updates, risks, follow-ups
+	KindSignal    = "signal" // a wake-up of the owner-side main session
 )
 
 type Item struct {
@@ -66,14 +67,16 @@ type Item struct {
 	Text       string
 	From       worker.Requester
 	At         time.Time
-	ScheduleID string // KindSchedule: the job that fired
+	ScheduleID string   // KindSchedule: the job that fired
+	SignalIDs  []string // KindSignal: the signals this wake-up is about
+	ReplyConv  string   // KindSignal: where the plain reply goes
 }
 
 func (it Item) priority() int {
 	switch {
 	case it.Kind == KindMessage && it.From.Privileged():
 		return 0
-	case it.Kind == KindTaskEvent || it.Kind == KindSchedule || it.Kind == KindPM:
+	case it.Kind == KindTaskEvent || it.Kind == KindSchedule || it.Kind == KindPM || it.Kind == KindSignal:
 		return 1
 	}
 	return 2
@@ -126,6 +129,13 @@ type Options struct {
 	DataDir       string
 	// ScheduleDone is told when a turn that handled a scheduled job ends.
 	ScheduleDone func(id string)
+	// Intake takes a message into the main session as an attention signal.
+	// It returns false to leave the message in its conversation's own lane
+	// (e.g. visitors when visitors are isolated).
+	Intake func(in Inbound, user identity.User, convKey string) bool
+	// TurnDone is told when a main-session turn ends: the signals it was
+	// woken for and whether it answered.
+	TurnDone func(signalIDs []string, answered bool)
 }
 
 type lane struct {
@@ -230,7 +240,16 @@ func (h *Hub) onInbound(in Inbound) {
 	}
 	h.mu.Unlock()
 
-	if strings.HasPrefix(text, "/") && h.command(conv, in, user, text) {
+	if strings.HasPrefix(text, "/") {
+		target := conv
+		if !in.IsGroup && user.Privileged() && h.opts.Intake != nil {
+			target = h.mainConv() // /reset etc. act on the main session
+		}
+		if h.command(target, in, user, text) {
+			return
+		}
+	}
+	if h.opts.Intake != nil && h.opts.Intake(in, user, key) {
 		return
 	}
 	h.enqueue(key, Item{Kind: KindMessage, Text: text, At: time.Now(), From: user})
@@ -348,6 +367,9 @@ func (h *Hub) SendTo(ctx context.Context, convKey, text string) error {
 	h.mu.Lock()
 	c := h.convs[convKey]
 	h.mu.Unlock()
+	if convKey == h.MainKey() {
+		c = h.replyTarget(h.mainConv(), nil)
+	}
 	if c == nil {
 		return fmt.Errorf("unknown conversation %s", convKey)
 	}
@@ -358,6 +380,68 @@ func (h *Hub) SendTo(ctx context.Context, convKey, text string) error {
 	err := p.Send(ctx, c.ChatID, text)
 	h.opts.Audit.Record(audit.Event{Type: audit.Outbound, Platform: c.Platform, Conv: convKey, Text: audit.Clip(text, 2000), Error: errString(err)})
 	return err
+}
+
+// SetIntake routes messages into the main session (intake turns them into
+// signals) and reports main-session turns.
+func (h *Hub) SetIntake(intake func(in Inbound, user identity.User, convKey string) bool, turnDone func(ids []string, answered bool)) {
+	h.opts.Intake, h.opts.TurnDone = intake, turnDone
+}
+
+// MainKey is the main session: the bot's one continuous working context.
+// Everyone's messages and the scaffold's signals arrive there; each turn
+// runs with the rights of whoever it is for (never mixing a colleague's
+// signal with the owner's in one turn), and replies go back where each
+// signal came from.
+func (h *Hub) MainKey() string { return h.opts.KeyPrefix + "main" }
+
+func (h *Hub) mainConv() *Conversation {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.convLocked(h.MainKey(), "main", "main", false)
+}
+
+// WakeMain hands a wake-up to the main session; from is whose rights the
+// turn runs with (the scaffold's own signals run as the owner).
+func (h *Hub) WakeMain(text string, signalIDs []string, replyConv string, from identity.User) {
+	if from.ID == "" {
+		from = MainUser
+	}
+	h.mainConv()
+	h.enqueue(h.MainKey(), Item{Kind: KindSignal, Text: text, From: from, At: time.Now(), SignalIDs: signalIDs, ReplyConv: replyConv})
+}
+
+// MainUser is who the scaffold's own wake-ups run as.
+var MainUser = identity.User{ID: "bot-connect", Name: "bot-connect", Role: identity.RoleOwner}
+
+// sameAudience: items that may share a main-session turn — the owner side
+// together, each other person alone.
+func sameAudience(a, b Item) bool {
+	if a.From.Privileged() && b.From.Privileged() {
+		return true
+	}
+	return a.From.ID == b.From.ID
+}
+
+// replyTarget resolves where a turn's plain reply goes: for the main
+// session, the conversation the focus came from (else the owner's chat).
+func (h *Hub) replyTarget(conv *Conversation, items []Item) *Conversation {
+	if conv.Key != h.MainKey() {
+		return conv
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for i := len(items) - 1; i >= 0; i-- {
+		if c := h.convs[items[i].ReplyConv]; c != nil && c.Key != h.MainKey() {
+			return c
+		}
+	}
+	for pname, chat := range h.ownerChat {
+		if c := h.convs[h.convKey(pname, chat)]; c != nil {
+			return c
+		}
+	}
+	return nil
 }
 
 // OwnerConv is the conversation key of the owner's private chat ("" until
@@ -503,6 +587,14 @@ func (h *Hub) runTurn(ctx context.Context, l *lane) {
 	h.mu.Lock()
 	items := l.pending
 	l.pending = nil
+	if l.conv != nil && l.conv.Key == h.MainKey() && len(items) > 1 {
+		// one audience per turn: rights follow whoever the turn is for
+		n := 1
+		for n < len(items) && sameAudience(items[0], items[n]) {
+			n++
+		}
+		items, l.pending = items[:n], append([]Item(nil), items[n:]...)
+	}
 	conv := l.conv
 	h.mu.Unlock()
 	defer func() {
@@ -533,12 +625,26 @@ func (h *Hub) runTurn(ctx context.Context, l *lane) {
 	slog.Info("turn end", "conv", conv.Key, "dur", dur)
 	h.opts.Audit.Record(audit.Event{Type: audit.TurnEnd, Platform: conv.Platform, Conv: conv.Key, User: &caller,
 		Text: audit.Clip(reply, 4000), Error: errString(err), Duration: dur.String()})
-	if r := strings.TrimSpace(reply); r == "" || r == "NO_REPLY" {
+	r := strings.TrimSpace(reply)
+	answered := r != "" && r != "NO_REPLY"
+	if conv.Key == h.MainKey() && h.opts.TurnDone != nil {
+		var ids []string
+		for _, it := range items {
+			ids = append(ids, it.SignalIDs...)
+		}
+		defer h.opts.TurnDone(ids, answered || err == nil)
+	}
+	if !answered {
 		return
 	}
-	if p := h.platforms[conv.Platform]; p != nil {
-		if err := p.Send(ctx, conv.ChatID, reply); err != nil {
-			slog.Error("send reply", "conv", conv.Key, "err", err)
+	target := h.replyTarget(conv, items)
+	if target == nil {
+		slog.Warn("no conversation to reply to", "conv", conv.Key)
+		return
+	}
+	if p := h.platforms[target.Platform]; p != nil {
+		if err := p.Send(ctx, target.ChatID, reply); err != nil {
+			slog.Error("send reply", "conv", target.Key, "err", err)
 		}
 	}
 }

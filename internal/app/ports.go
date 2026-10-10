@@ -8,8 +8,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/chenhg5/bot-connect/internal/domain/attention"
 	"github.com/chenhg5/bot-connect/internal/domain/delegation"
+	"github.com/chenhg5/bot-connect/internal/domain/inbox"
 	"github.com/chenhg5/bot-connect/internal/domain/planning"
 	"github.com/chenhg5/bot-connect/internal/domain/portfolio"
 	. "github.com/chenhg5/bot-connect/internal/domain/shared"
@@ -25,21 +25,28 @@ type State struct {
 	Assignments map[AssignmentID]delegation.Assignment `json:"assignments"`
 	Workers     map[WorkerID]workforce.Worker          `json:"workers"`
 	States      map[WorkerID]workforce.WorkerState     `json:"states"`
-	Resolutions map[string]attention.Resolution        `json:"resolutions"`
-	Raised      map[string]Raised                      `json:"raised"` // signals the brain was already woken for
+	Signals     map[string]inbox.Signal                `json:"signals"`             // the attention inbox
+	Contacts    map[string]Contact                     `json:"contacts"`            // messages the bot sent people via contact
+	Escalated   map[string]bool                        `json:"escalated,omitempty"` // risk signals sent straight to the owner
+	LastBatch   time.Time                              `json:"last_batch,omitempty"`
 }
 
-// Raised: a signal the brain has been woken for.
-type Raised struct {
-	Level     attention.Level `json:"level"`
-	At        time.Time       `json:"at"`
-	Escalated bool            `json:"escalated,omitempty"` // also sent straight to the owner
+// Contact is a message the brain sent someone through the contact tool.
+type Contact struct {
+	ID          string     `json:"id"`
+	Worker      WorkerID   `json:"worker"`
+	Message     string     `json:"message"`
+	About       inbox.Refs `json:"about"`
+	ExpectReply bool       `json:"expect_reply"`
+	Open        bool       `json:"open"` // still waiting for their reply
+	At          time.Time  `json:"at"`
+	By          Actor      `json:"by"`
 }
 
 func NewState() *State {
 	return &State{Seq: map[string]int{}, Projects: map[ProjectID]portfolio.Project{}, Items: map[ItemID]planning.Item{},
 		Assignments: map[AssignmentID]delegation.Assignment{}, Workers: map[WorkerID]workforce.Worker{},
-		States: map[WorkerID]workforce.WorkerState{}, Resolutions: map[string]attention.Resolution{}, Raised: map[string]Raised{}}
+		States: map[WorkerID]workforce.WorkerState{}, Signals: map[string]inbox.Signal{}, Contacts: map[string]Contact{}, Escalated: map[string]bool{}}
 }
 
 // Fill makes sure every map exists (after loading an older file).
@@ -63,11 +70,14 @@ func (s *State) Fill() {
 	if s.States == nil {
 		s.States = f.States
 	}
-	if s.Resolutions == nil {
-		s.Resolutions = f.Resolutions
+	if s.Signals == nil {
+		s.Signals = f.Signals
 	}
-	if s.Raised == nil {
-		s.Raised = f.Raised
+	if s.Contacts == nil {
+		s.Contacts = f.Contacts
+	}
+	if s.Escalated == nil {
+		s.Escalated = f.Escalated
 	}
 }
 
@@ -117,26 +127,35 @@ type Notice struct {
 	Urgency workforce.Urgency
 }
 
-// Trigger is a reason to wake the brain.
-type Trigger struct {
-	Kind    string // event | rule | cadence | message
-	Conv    string // conversation to handle it in ("" = the owner's)
-	Project ProjectID
-	Text    string
-	Signals []attention.Signal
-	Event   *Event
-	About   Actor
+// Wake asks the cognition layer to handle signals now: the focus of a
+// wake-up (the rest of the inbox is listed alongside, not pushed).
+type Wake struct {
+	Signals   []inbox.Signal
+	ReplyConv string // where a plain reply goes ("" = the owner's private chat)
 }
 
-// Waker hands triggers to the cognition layer.
+// Waker hands wake-ups to the cognition layer.
 type Waker interface {
-	Wake(ctx context.Context, t Trigger)
+	Wake(ctx context.Context, w Wake)
 }
 
 // WakerFunc adapts a function.
-type WakerFunc func(ctx context.Context, t Trigger)
+type WakerFunc func(ctx context.Context, w Wake)
 
-func (f WakerFunc) Wake(ctx context.Context, t Trigger) { f(ctx, t) }
+func (f WakerFunc) Wake(ctx context.Context, w Wake) { f(ctx, w) }
+
+// Triage is the L1 judgment on an incoming signal (a System One model, or
+// rules): it may raise or lower its level and override when to wake. The
+// default does nothing.
+type Triage interface {
+	Assess(ctx context.Context, s inbox.Signal) (TriageResult, error)
+}
+
+type TriageResult struct {
+	Wake  string // "" keep the policy's decision | now | batch | ignore
+	Level *int
+	Note  string
+}
 
 // EventSink receives committed events (audit, metrics, board sync…).
 type EventSink interface {

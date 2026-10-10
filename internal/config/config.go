@@ -89,7 +89,13 @@ type Bot struct {
 	// the machine.
 	Workers []string `toml:"workers"`
 	// Templates this bot may create workers from (empty = all).
-	Templates          []string `toml:"templates"`
+	Templates []string `toml:"templates"`
+	// IsolateVisitors keeps colleagues' conversations out of the bot's main
+	// session (separate memory per conversation). Default: one session for
+	// everything, with each turn limited to the rights of whoever it is for.
+	IsolateVisitors bool `toml:"isolate_visitors"`
+	// Wake: which signals wake the brain now, which wait for a batch.
+	Wake               Wake     `toml:"wake"`
 	MaxConcurrentTurns int      `toml:"max_concurrent_turns"`
 	TurnTimeout        Duration `toml:"turn_timeout"`
 	Debounce           Duration `toml:"debounce"`
@@ -308,6 +314,33 @@ type Contact struct {
 	Address    string `toml:"address" json:"address"`
 	MinUrgency string `toml:"min_urgency" json:"min_urgency,omitempty"` // normal | reminder | urgent | critical
 	Approval   bool   `toml:"approval" json:"approval,omitempty"`
+}
+
+// Wake is the bot's work rhythm: for each kind of signal, "now" (wake the
+// brain at once), "batch" (handled at the next batch wake-up) or "ignore".
+type Wake struct {
+	DirectMessage string   `toml:"direct_message"`
+	Mention       string   `toml:"mention"`
+	WorkerReply   string   `toml:"worker_reply"`
+	Relay         string   `toml:"relay"`
+	RiskHigh      string   `toml:"risk_high"`
+	RiskMedium    string   `toml:"risk_medium"`
+	RiskLow       string   `toml:"risk_low"`
+	Cadence       string   `toml:"cadence"`
+	System        string   `toml:"system"`
+	BatchEvery    Duration `toml:"batch_every"`
+}
+
+// Modes returns the configured modes by signal kind (unset ones omitted).
+func (w Wake) Modes() map[string]string {
+	out := map[string]string{}
+	for k, v := range map[string]string{"direct_message": w.DirectMessage, "mention": w.Mention, "worker_reply": w.WorkerReply,
+		"relay": w.Relay, "risk_high": w.RiskHigh, "risk_medium": w.RiskMedium, "risk_low": w.RiskLow, "cadence": w.Cadence, "system": w.System} {
+		if v != "" {
+			out[k] = v
+		}
+	}
+	return out
 }
 
 // Org is the company-level setup.
@@ -604,6 +637,13 @@ func (c *Config) validate() error {
 	for _, pl := range c.Org.Policies {
 		if pl.Action == "" || len(pl.Approvers) == 0 {
 			return fmt.Errorf("org policy: needs action and approvers")
+		}
+	}
+	for _, b := range c.Bots {
+		for k, v := range b.Wake.Modes() {
+			if v != "now" && v != "batch" && v != "ignore" {
+				return fmt.Errorf("bot %s: wake.%s must be now, batch or ignore", b.Name, k)
+			}
 		}
 	}
 	bots, apps := map[string]bool{}, map[string]string{}

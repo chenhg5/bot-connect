@@ -563,6 +563,13 @@ func New(env Env) *Registry {
 		Description: "Forward a visitor's request or message to the owner's private chat.",
 		Schema:      obj(props{"message": str("what to tell the owner: who, and what they want")}, "message"),
 		Handler: func(ctx context.Context, tc TurnContext, a map[string]any) (string, error) {
+			if env.App != nil { // to the owner side as a signal; the main session decides what to do
+				by := actorOf(env.App, tc)
+				if _, err := env.App.Relay(ctx, by, tc.Caller.Display(), tc.ConvKey, "", s(a, "message")); err != nil {
+					return "", err
+				}
+				return "passed on to the owner side", nil
+			}
 			text := fmt.Sprintf("📨 来自「%s」（%s · %s）的留言：\n%s", tc.Caller.Display(), tc.Platform, tc.Caller.ID, s(a, "message"))
 			if err := env.Messenger.NotifyOwner(ctx, text); err != nil {
 				return "", err

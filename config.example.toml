@@ -17,6 +17,20 @@ turn_timeout = "5m"
 debounce = "800ms"            # wait this long for follow-up messages before replying
 history_limit = 30            # messages of plain-text history kept per conversation
 
+# Work rhythm. Everything that may need the bot — a message, a worker's reply,
+# a risk, a cadence — becomes an attention signal; this decides which ones wake
+# the brain at once ("now"), which wait for the next batch ("batch"), and which
+# are only recorded ("ignore"). Your private messages and the system's signals
+# go to one continuous owner-side session; colleagues' chats stay separate.
+# [bot.wake]
+# direct_message = "now"
+# worker_reply = "now"
+# relay = "now"          # colleagues' requests passed on with notify_owner
+# risk_high = "now"
+# risk_medium = "batch"
+# cadence = "batch"
+# batch_every = "30m"
+
 # The brain is a pluggable agent; bot-connect only injects tools + prompt + context.
 [brain]
 agent = "claudecode"          # "claudecode" | "codex" | "pi" | "command"  (pi: fastest; needs provider when isolated)

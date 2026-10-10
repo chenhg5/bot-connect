@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/chenhg5/bot-connect/internal/app"
-	"github.com/chenhg5/bot-connect/internal/domain/attention"
 	"github.com/chenhg5/bot-connect/internal/domain/delegation"
+	"github.com/chenhg5/bot-connect/internal/domain/inbox"
 	"github.com/chenhg5/bot-connect/internal/domain/insight"
 	"github.com/chenhg5/bot-connect/internal/domain/planning"
 	"github.com/chenhg5/bot-connect/internal/domain/portfolio"
@@ -310,20 +310,95 @@ func addPM(r *Registry, env Env) {
 		},
 	})
 	r.add(Tool{
-		Name:        "resolve",
-		Description: "Record what you did about an agenda entry (by its key) so it doesn't come back until it should: done | acted (waiting on others) | deferred | handed_to_owner | dismissed. acted / deferred / handed_to_owner come back at `until` (default 24h).",
+		Name:        "inbox",
+		Description: "Open attention signals (messages, worker replies, risks, cadence, relays), highest score first, with ids. Deferred ones too with all=true.",
 		OwnerOnly:   true,
-		Schema: obj(props{"key": str("agenda key, e.g. will_miss:I7"), "outcome": enum("", "done", "acted", "deferred", "handed_to_owner", "dismissed"),
-			"until": str("when to look again (see plan_item due)"), "note": str("what was done")}, "key", "outcome"),
+		Schema:      obj(props{"all": boolean("include deferred signals")}),
+		Handler: func(ctx context.Context, tc TurnContext, a map[string]any) (string, error) {
+			all, _ := a["all"].(bool)
+			sigs := pm.Inbox(all)
+			if len(sigs) == 0 {
+				return "(inbox is empty)", nil
+			}
+			var b strings.Builder
+			for _, x := range sigs {
+				fmt.Fprintf(&b, "- %s 分 %.1f [%s]\n", app.SignalLine(x.Signal, pm.Clock.Now()), x.Score, x.Status)
+			}
+			return b.String(), nil
+		},
+	})
+	r.add(Tool{
+		Name: "signal_update",
+		Description: "Record what you decided about a signal: handled (done), ignored (with the reason), deferred (until a time — it comes back then), handling (you're on it). " +
+			"Signals you were woken for and answered are marked handled automatically; use this for the rest, and whenever you put something off.",
+		OwnerOnly: true,
+		Schema: obj(props{"signal": str("signal id, e.g. S12"), "status": enum("", "handled", "ignored", "deferred", "handling"),
+			"note": str("why / what was done"), "until": str("deferred: when to look again (下午 / 明天 / 2h …)")}, "signal", "status"),
 		Handler: func(ctx context.Context, tc TurnContext, a map[string]any) (string, error) {
 			until, err := app.ParseWhen(s(a, "until"), pm.Clock.Now())
 			if err != nil {
 				return "", domainErr(err)
 			}
-			if err := pm.Resolve(ctx, actorOf(pm, tc), s(a, "key"), attention.Outcome(s(a, "outcome")), until, s(a, "note")); err != nil {
+			if err := pm.UpdateSignal(ctx, actorOf(pm, tc), s(a, "signal"), inbox.Status(s(a, "status")), s(a, "note"), until); err != nil {
 				return "", domainErr(err)
 			}
-			return "Recorded " + s(a, "outcome") + " for " + s(a, "key"), nil
+			return s(a, "signal") + " → " + s(a, "status"), nil
+		},
+	})
+	r.add(Tool{
+		Name:        "reply",
+		Description: "Answer a signal where it came from (the private chat, the group, the conversation that asked) — you don't pick the channel. Marks the signal handled unless keep_open.",
+		OwnerOnly:   true,
+		Schema:      obj(props{"signal": str("signal id"), "text": str("the reply (Markdown ok)"), "keep_open": boolean("leave the signal open")}, "signal", "text"),
+		Handler: func(ctx context.Context, tc TurnContext, a map[string]any) (string, error) {
+			sig, ok := pm.Signal(s(a, "signal"))
+			if !ok {
+				return "", &ToolError{KindNotFound, "no signal " + s(a, "signal")}
+			}
+			conv := sig.ReplyTo.Conv
+			if conv == "" {
+				conv = tc.ConvKey
+			}
+			if err := env.Messenger.SendTo(ctx, conv, s(a, "text")); err != nil {
+				return "", err
+			}
+			if keep, _ := a["keep_open"].(bool); !keep && !sig.Status.Terminal() {
+				_ = pm.UpdateSignal(ctx, actorOf(pm, tc), sig.ID, inbox.Handled, "replied", nil)
+			}
+			return "replied to " + sig.ID, nil
+		},
+	})
+	r.add(Tool{
+		Name: "contact",
+		Description: "Get a message to a person (not an agent): say who, what, how urgent, whether you need an answer, and what it's about. bot-connect picks the channel " +
+			"(chat, urgent call, email…) from their contact routes, respects their hours and reminder limits, and brings their answer back as a signal about the same thing.",
+		OwnerOnly: true,
+		Schema: obj(props{
+			"person":       str("worker id or name"),
+			"message":      str("self-contained: only what they need to know"),
+			"urgency":      enum("default normal", "normal", "reminder", "urgent", "critical"),
+			"expect_reply": boolean("you need an answer (default true)"),
+			"item":         str("what it's about: item id"),
+			"assignment":   str("…or assignment id"),
+			"project":      str("…or project id"),
+		}, "person", "message"),
+		Handler: func(ctx context.Context, tc TurnContext, a map[string]any) (string, error) {
+			who, err := pm.ResolveWorker(s(a, "person"))
+			if err != nil {
+				return "", domainErr(err)
+			}
+			u := map[string]workforce.Urgency{"": workforce.Normal, "normal": workforce.Normal, "reminder": workforce.Reminder,
+				"urgent": workforce.Urgent, "critical": workforce.Critical}[s(a, "urgency")]
+			expect := true
+			if v, ok := a["expect_reply"].(bool); ok {
+				expect = v
+			}
+			id, err := pm.Contact(ctx, actorOf(pm, tc), who, s(a, "message"), u, expect,
+				inbox.Refs{Project: ProjectID(s(a, "project")), Item: ItemID(s(a, "item")), Assignment: AssignmentID(s(a, "assignment"))})
+			if err != nil {
+				return "", domainErr(err)
+			}
+			return fmt.Sprintf("sent to %s (%s); their answer comes back as a signal", who, id), nil
 		},
 	})
 	r.add(Tool{

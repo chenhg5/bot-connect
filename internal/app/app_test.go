@@ -11,8 +11,8 @@ import (
 	"github.com/chenhg5/bot-connect/internal/adapters/drivers/human"
 	"github.com/chenhg5/bot-connect/internal/adapters/store/jsonstore"
 	"github.com/chenhg5/bot-connect/internal/app"
-	"github.com/chenhg5/bot-connect/internal/domain/attention"
 	"github.com/chenhg5/bot-connect/internal/domain/delegation"
+	"github.com/chenhg5/bot-connect/internal/domain/inbox"
 	"github.com/chenhg5/bot-connect/internal/domain/planning"
 	"github.com/chenhg5/bot-connect/internal/domain/portfolio"
 	. "github.com/chenhg5/bot-connect/internal/domain/shared"
@@ -45,7 +45,7 @@ type rig struct {
 	agent *fakeAgent
 	mu    sync.Mutex
 	dms   []string // "address: text"
-	wakes []app.Trigger
+	wakes []app.Wake
 }
 
 var (
@@ -91,7 +91,7 @@ func newRig(t *testing.T, store app.Store) *rig {
 			return "m", nil
 		}),
 	}})
-	a.Waker = app.WakerFunc(func(_ context.Context, tr app.Trigger) {
+	a.Waker = app.WakerFunc(func(_ context.Context, tr app.Wake) {
 		r.mu.Lock()
 		defer r.mu.Unlock()
 		r.wakes = append(r.wakes, tr)
@@ -146,14 +146,16 @@ func (r *rig) lastDM() string {
 	return r.dms[len(r.dms)-1]
 }
 
-func (r *rig) lastWake() app.Trigger {
+func (r *rig) lastWake() app.Wake {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if len(r.wakes) == 0 {
-		return app.Trigger{}
+		return app.Wake{}
 	}
 	return r.wakes[len(r.wakes)-1]
 }
+
+func wakeText(w app.Wake) string { return app.FocusText(w.Signals) }
 
 func TestVertex500FlowThroughCommands(t *testing.T) {
 	r := newRig(t, jsonstore.Memory())
@@ -185,7 +187,7 @@ func TestVertex500FlowThroughCommands(t *testing.T) {
 
 	// ops-reader delivers a finding with two options: a decision for the owner.
 	must(t, a.Report(ctx, System("driver:agent"), as31.ID, app.Report{Action: "deliver", Result: "Vertex 区域配额收紧", Evidence: []string{"logs://q"}}))
-	if w := r.lastWake(); w.Conv != "chat-p3" || !strings.Contains(w.Text, "等待验收") {
+	if w := r.lastWake(); w.ReplyConv != "chat-p3" || !strings.Contains(wakeText(w), "等待验收") {
 		t.Fatalf("delivery wakes the brain in the project's chat: %+v", w)
 	}
 	must(t, a.Review(ctx, owner, as31.ID, "verify", ""))
@@ -265,7 +267,7 @@ func TestPeopleFollowUpsAndExpiry(t *testing.T) {
 	r.clock.Advance(32 * time.Hour) // > 48h since the offer
 	a.Tick(ctx)
 	cur, _ := a.Assignment(as.ID)
-	if cur.Status != delegation.Expired || !strings.Contains(r.lastWake().Text, "已过期") {
+	if cur.Status != delegation.Expired || !strings.Contains(wakeText(r.lastWake()), "已过期") {
 		t.Fatalf("expired and reported: %s %+v", cur.Status, r.lastWake())
 	}
 }
@@ -277,32 +279,93 @@ func TestSignalsRaiseOnceThenEscalate(t *testing.T) {
 	_, err := a.PlanItem(ctx, owner, planning.Spec{Project: "P3", Title: "发版", Due: &due, Estimate: 4 * time.Hour})
 	must(t, err)
 	a.Tick(ctx)
-	if w := r.lastWake(); w.Kind != "rule" || w.Conv != "chat-p3" || len(w.Signals) == 0 {
-		t.Fatalf("new risk wakes the brain in the project chat: %+v", w)
+	w := r.lastWake()
+	if len(w.Signals) != 1 || w.Signals[0].Source != inbox.Risk || w.ReplyConv != "chat-p3" {
+		t.Fatalf("a high risk wakes the brain at once, focused on it: %+v", w)
 	}
 	n := len(r.wakes)
 	r.clock.Advance(10 * time.Minute)
 	a.Tick(ctx)
 	if len(r.wakes) != n {
-		t.Fatal("the same signal is raised once")
+		t.Fatal("the same finding is one signal")
 	}
-	r.clock.Advance(2 * time.Hour) // still unhandled; now overdue too
+	dms := len(r.dms)
+	r.clock.Advance(2 * time.Hour)
 	a.Tick(ctx)
 	escalated := false
-	for _, w := range r.wakes[n:] {
-		escalated = escalated || (w.Conv == "" && strings.Contains(w.Text, "没有处理"))
+	for _, d := range r.dms[dms:] {
+		escalated = escalated || (strings.HasPrefix(d, "owner: ⚠️") && strings.Contains(d, "没有处理"))
 	}
 	if !escalated {
-		t.Fatalf("unhandled high signal escalates to the owner: %+v", r.wakes[n:])
+		t.Fatalf("an unhandled high risk goes straight to the owner: %v", r.dms[dms:])
 	}
-	// Handling it keeps it quiet.
-	ag, _ := a.Agenda(ctx)
-	for _, s := range append(ag.Now, ag.Today...) {
-		until := r.clock.Now().Add(3 * time.Hour)
-		must(t, a.Resolve(ctx, owner, s.Key, attention.Acted, &until, "已和需求方确认延期"))
+	// Handling every open signal empties the inbox; nothing comes back.
+	for _, x := range a.Inbox(false) {
+		must(t, a.UpdateSignal(ctx, owner, x.ID, inbox.Handled, "已和需求方确认延期", nil))
 	}
-	if ag2, _ := a.Agenda(ctx); len(ag2.Now)+len(ag2.Today) != 0 || ag2.Suppressed == 0 {
-		t.Fatalf("handled signals stay off the agenda: %+v", ag2)
+	if len(a.Inbox(false)) != 0 {
+		t.Fatal("inbox should be empty")
+	}
+	n = len(r.wakes)
+	r.clock.Advance(time.Hour)
+	a.Tick(ctx)
+	if len(r.wakes) != n {
+		t.Fatalf("handled findings don't come back: %+v", r.wakes[n:])
+	}
+}
+
+func TestInboxDedupeDeferAndBatch(t *testing.T) {
+	r := newRig(t, jsonstore.Memory())
+	a := r.app
+	spec := app.SignalSpec{Dedupe: "feishu:om_1", Source: inbox.DirectMessage, Reason: "dm", Actor: owner, Summary: "在吗", ReplyTo: inbox.ReplyTo{Conv: "dm-owner"}}
+	s1, created, err := a.Ingest(ctx, spec)
+	must(t, err)
+	if !created || r.lastWake().ReplyConv != "dm-owner" || r.lastWake().Signals[0].ID != s1.ID {
+		t.Fatalf("a direct message wakes the brain, replying where it came from: %+v", r.lastWake())
+	}
+	if _, created, _ := a.Ingest(ctx, spec); created {
+		t.Fatal("the same message is one signal")
+	}
+	later := r.clock.Now().Add(time.Hour)
+	must(t, a.UpdateSignal(ctx, owner, s1.ID, inbox.Deferred, "先处理风险", &later))
+	if len(a.Inbox(false)) != 0 {
+		t.Fatal("deferred signals leave the inbox until their time")
+	}
+	n := len(r.wakes)
+	r.clock.Advance(61 * time.Minute)
+	a.Tick(ctx)
+	if len(r.wakes) == n || r.lastWake().Signals[0].ID != s1.ID {
+		t.Fatal("a deferred signal comes back when due")
+	}
+	// Batched sources wait for the next batch wake-up.
+	_, _, err = a.Ingest(ctx, app.SignalSpec{Dedupe: "cadence:P3:standup:1", Source: inbox.Cadence, Reason: "standup", Summary: "站会检查"})
+	must(t, err)
+	n = len(r.wakes)
+	a.Tick(ctx) // batch interval not reached since the last batch
+	r.clock.Advance(31 * time.Minute)
+	a.Tick(ctx)
+	found := false
+	for _, w := range r.wakes[n:] {
+		for _, s := range w.Signals {
+			found = found || s.Reason == "standup"
+		}
+	}
+	if !found {
+		t.Fatalf("batched signal handled in a batch wake-up: %+v", r.wakes[n:])
+	}
+	if _, err := a.Contact(ctx, owner, "jerry", "你那边还有报错吗？", workforce.Normal, true, inbox.Refs{Project: "P3"}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(r.lastDM(), "ou_jerry: 你那边还有报错吗") || len(a.OpenContacts("jerry")) != 1 {
+		t.Fatalf("contact goes out along the person's routes: %s", r.lastDM())
+	}
+	sig, err := a.Relay(ctx, Actor{UserID: "ou_jerry", Worker: "jerry"}, "Jerry", "dm-jerry", "om_9", "没再出现了")
+	must(t, err)
+	if sig.Source != inbox.Relay || sig.Refs.Project != "P3" || len(a.OpenContacts("jerry")) != 0 {
+		t.Fatalf("a reply to a contact comes back as a signal about the same thing: %+v", sig)
+	}
+	if _, err := a.Contact(ctx, owner, "tapnow-dev", "hi", workforce.Normal, false, inbox.Refs{}); err == nil {
+		t.Fatal("agents are contacted through delegate / agent_task")
 	}
 }
 

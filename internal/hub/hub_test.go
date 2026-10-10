@@ -136,3 +136,54 @@ func TestLeastPrivilege(t *testing.T) {
 		t.Fatal("turn with a visitor item must not run as owner")
 	}
 }
+
+// One session for everyone, but never one turn for two audiences: the
+// owner's signals and a colleague's are handled in separate turns, each with
+// its own rights, and each reply goes back where its signal came from.
+func TestMainSessionSplitsAudiences(t *testing.T) {
+	h, b := newTestHub(t, 1, 0)
+	var done [][]string
+	var mu sync.Mutex
+	h.SetIntake(func(in Inbound, u identity.User, conv string) bool {
+		h.WakeMain(in.Text, []string{"S-" + in.MessageID}, conv, u)
+		return true
+	}, func(ids []string, answered bool) { mu.Lock(); done = append(done, ids); mu.Unlock() })
+	h.onInbound(msg("dm-owner", "owner", "新开一个项目"))
+	h.onInbound(msg("dm-ww", "wangwu", "收到，下周五可以吗"))
+	h.onInbound(msg("dm-owner", "owner", "还有一件事"))
+	waitTurns(t, b, 2)
+	time.Sleep(200 * time.Millisecond)
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	callers := map[identity.Role]int{}
+	for _, tr := range b.turns {
+		if tr.Conv.Key != h.MainKey() {
+			t.Fatalf("all turns run in the main session, got %s", tr.Conv.Key)
+		}
+		for _, it := range tr.Items {
+			if it.From.Privileged() != tr.Caller.Privileged() {
+				t.Fatalf("a turn mixed audiences: caller %s, item from %s", tr.Caller.ID, it.From.ID)
+			}
+		}
+		callers[tr.Caller.Role]++
+	}
+	if callers[identity.RoleOwner] == 0 || callers[identity.RoleVisitor] == 0 {
+		t.Fatalf("owner and colleague turns expected: %v", callers)
+	}
+	p := h.platforms["fake"].(*fakePlatform)
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	var toOwner, toWW bool
+	for _, s := range p.sent {
+		toOwner = toOwner || strings.HasPrefix(s, "dm-owner:")
+		toWW = toWW || strings.HasPrefix(s, "dm-ww:")
+	}
+	if !toOwner || !toWW {
+		t.Fatalf("replies go back where each signal came from: %v", p.sent)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(done) < 2 {
+		t.Fatalf("turn results reported: %v", done)
+	}
+}
