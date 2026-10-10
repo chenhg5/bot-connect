@@ -137,6 +137,8 @@ type Brain struct {
 	EnvVars map[string]string `toml:"env"`
 
 	Env []string `toml:"-"` // resolved: provider env + EnvVars
+	// The resolved provider (for adapters that configure models themselves, e.g. pi).
+	ProviderSpec *Provider `toml:"-"`
 }
 
 // MCPServer is an extra MCP server handed to the brain: either remote (URL)
@@ -504,6 +506,7 @@ func resolveBrain(br *Brain, find func(string) (Provider, error)) error {
 		if err != nil {
 			return fmt.Errorf("brain: %w", err)
 		}
+		br.ProviderSpec = &p
 		br.Env = append(br.Env, p.ClaudeEnv()...)
 		if *br.Isolate && p.APIKey != "" {
 			// --bare only reads ANTHROPIC_API_KEY.

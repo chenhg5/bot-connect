@@ -19,7 +19,7 @@ history_limit = 30            # messages of plain-text history kept per conversa
 
 # The brain is a pluggable agent; bot-connect only injects tools + prompt + context.
 [brain]
-agent = "claudecode"          # "claudecode" | "codex" | "command"
+agent = "claudecode"          # "claudecode" | "codex" | "pi" | "command"  (pi: fastest; needs provider when isolated)
 # work_dir = "~/.bot-connect/brain"
 model = "sonnet"
 # claudecode: built-in tools the brain keeps; default none (bot tools only).

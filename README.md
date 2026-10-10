@@ -34,6 +34,7 @@ Requires `claude` and/or `codex` CLIs on PATH, logged in.
 |---|---|---|---|
 | `claudecode` | `--mcp-config` (strict), built-ins off via `--tools` | `--append-system-prompt` | one per conversation, `--resume` |
 | `codex` | `-c mcp_servers.bot.url=…` (tools pre-approved), read-only sandbox | inlined at session start | one per conversation, `exec resume` |
+| `pi` | a bundled pi extension registers bot-connect's tools; `--tools` allows only those (no shell, no files) | `--append-system-prompt` | one per conversation, `--session` |
 | `command` | `bot-connect tool call --name <tool> --args '<json>'` (env `BOT_CONNECT_API`) | inlined every turn (+ recent history) | stateless |
 
 Brains and workers are always invoked as their real CLIs (`claude -p …`, `codex exec …`, or your

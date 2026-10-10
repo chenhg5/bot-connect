@@ -43,6 +43,7 @@ Escape hatch (wins over `access`): `permission_mode`, `tools`, `confine`, `sandb
 | `read_dirs`, `deny_read` | where its file tools may read (Claude Code) |
 | `mcp_servers` | your extra MCP servers |
 | `isolate` (default on) | Claude: `--bare` / `--setting-sources ""`; Codex: own `CODEX_HOME` (no `~/.codex` config, global AGENTS.md, plugins; login symlinked) and no project AGENTS.md |
+| pi brain | only bot-connect's tools (registered by a bundled extension, enforced with `--tools`); no context files, extensions, skills or templates; isolated config dir whose only model is the configured provider |
 | `confine` (Codex, default on) | permission profile: minimal system reads + `work_dir` + `read_dirs` |
 
 ## Isolation between people

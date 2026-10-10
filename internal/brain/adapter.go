@@ -36,6 +36,7 @@ type Request struct {
 	Prompt       string // this turn: context block + new messages
 	Tools        ToolAccess
 	Env          []string // extra KEY=VALUE for the agent process
+	ToolNames    []string // names of the bot-connect tools this brain may use
 }
 
 // ToolAccess is how the agent reaches tools during this turn.

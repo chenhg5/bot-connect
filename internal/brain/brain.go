@@ -32,6 +32,7 @@ type Brain struct {
 	workers   *worker.Manager
 	server    *toolserver.Server
 	allow     map[string]bool
+	toolNames []string
 	scope     worker.Scope
 	botName   string
 	ownerName string
@@ -59,7 +60,11 @@ func New(cfg config.Brain, h *hub.Hub, w *worker.Manager, srv *toolserver.Server
 			allow[n] = true
 		}
 	}
-	return &Brain{cfg: cfg, adapter: ad, hub: h, workers: w, server: srv, allow: allow, scope: scope, botName: botName, ownerName: ownerName}, nil
+	names := toolNames
+	if len(allow) > 0 {
+		names = cfg.Tools
+	}
+	return &Brain{cfg: cfg, adapter: ad, hub: h, workers: w, server: srv, allow: allow, toolNames: names, scope: scope, botName: botName, ownerName: ownerName}, nil
 }
 
 // sessionKind identifies the settings a brain session was created under.
@@ -102,6 +107,7 @@ func (b *Brain) HandleTurn(ctx context.Context, t hub.Turn) (string, error) {
 			Prompt:       b.turnPrompt(t, !caps.SystemPrompt && (fresh || !caps.Sessions), fresh || !caps.Sessions),
 			Tools:        ToolAccess{MCPURL: b.server.MCPURL(token), APIURL: b.server.APIURL(token), Extra: b.cfg.MCPServers},
 			Env:          b.cfg.Env,
+			ToolNames:    b.toolNames,
 		})
 	}
 	res, err := run(sid)

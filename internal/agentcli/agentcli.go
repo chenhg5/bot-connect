@@ -246,3 +246,46 @@ func Tail(s string, n int) string {
 	}
 	return "…" + s[len(s)-n:]
 }
+
+// Pi runs `pi <args>`; args must include -p … --mode json.
+func Pi(ctx context.Context, c Call) (Result, error) {
+	var res Result
+	var failure string
+	stderr, err := runJSONL(ctx, c, "pi", func(ev map[string]any) {
+		switch ev["type"] {
+		case "session":
+			if id, _ := ev["id"].(string); id != "" {
+				res.SessionID = id
+			}
+		case "message_end":
+			if m, ok := ev["message"].(map[string]any); ok && m["role"] == "assistant" {
+				if t := piText(m["content"]); t != "" {
+					res.Text = t
+				}
+				if e, _ := m["errorMessage"].(string); e != "" {
+					failure = e
+				}
+			}
+		}
+	})
+	if res.Text == "" && failure != "" {
+		return res, fmt.Errorf("pi: %s", Tail(failure, 600))
+	}
+	if err != nil && res.Text == "" {
+		return res, fmt.Errorf("pi: %v: %s", err, Tail(stderr, 600))
+	}
+	return res, nil
+}
+
+func piText(content any) string {
+	blocks, _ := content.([]any)
+	var parts []string
+	for _, b := range blocks {
+		if bm, ok := b.(map[string]any); ok && bm["type"] == "text" {
+			if t, _ := bm["text"].(string); strings.TrimSpace(t) != "" {
+				parts = append(parts, t)
+			}
+		}
+	}
+	return strings.Join(parts, "\n")
+}
