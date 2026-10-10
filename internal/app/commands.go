@@ -114,6 +114,36 @@ func (a *App) NoteWorker(ctx context.Context, by Actor, id WorkerID, f workforce
 
 // ---- projects ----
 
+// ResolveProject finds a project by id or title ("" → the company).
+func (a *App) ResolveProject(s string) ProjectID {
+	s = strings.TrimSpace(s)
+	if s == "" || s == "公司" || strings.EqualFold(s, "org") {
+		return OrgProject
+	}
+	var exact, partial []ProjectID
+	a.Store.Read(func(st *State) {
+		if _, ok := st.Projects[ProjectID(s)]; ok {
+			exact = []ProjectID{ProjectID(s)}
+			return
+		}
+		for id, p := range st.Projects {
+			switch {
+			case strings.EqualFold(p.Title, s):
+				exact = append(exact, id)
+			case p.Open() && (strings.Contains(p.Title, s) || strings.Contains(s, p.Title)):
+				partial = append(partial, id)
+			}
+		}
+	})
+	if len(exact) == 1 {
+		return exact[0]
+	}
+	if len(exact) == 0 && len(partial) == 1 {
+		return partial[0]
+	}
+	return ProjectID(s)
+}
+
 type ProjectSpec struct {
 	ID        ProjectID
 	Parent    ProjectID
@@ -152,6 +182,11 @@ func (a *App) CreateProject(ctx context.Context, by Actor, sp ProjectSpec) (port
 		}
 		if _, ok := s.Projects[id]; ok {
 			return nil, Conflict("project %s already exists", id)
+		}
+		for pid, p := range s.Projects {
+			if p.Open() && strings.EqualFold(strings.TrimSpace(p.Title), strings.TrimSpace(sp.Title)) {
+				return nil, Conflict("a project titled %q already exists: %s — use it", p.Title, pid)
+			}
 		}
 		parent := sp.Parent
 		if parent == "" && id != OrgProject {

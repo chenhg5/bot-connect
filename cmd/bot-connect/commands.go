@@ -45,7 +45,7 @@ func newApp() *cli.App {
 			"bot-connect schema --command \"worker list\"   # a command's flags as JSON",
 		},
 		Children: []*cli.Command{
-			configCmd(), botCmd(), workerCmd(), templateCmd(), sessionCmd(), taskCmd(), scheduleCmd(), auditCmd(), feishuCmd(), toolCmd(),
+			configCmd(), botCmd(), workerCmd(), templateCmd(), projectCmd(), itemCmd(), inboxCmd(), evalCmd(), sessionCmd(), taskCmd(), scheduleCmd(), auditCmd(), feishuCmd(), toolCmd(),
 			schemaCmd(app), versionCmd(),
 		},
 	}

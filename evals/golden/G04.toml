@@ -1,0 +1,44 @@
+id = "G4"
+title = "做不到的需求：当场指出并给选项，不直接答应"
+critical = true
+now = "2026-10-12 10:00"
+
+[[agents]]
+id = "web-dev"
+description = "官网前端开发 agent"
+capabilities = ["repo:website:write"]
+
+[[projects]]
+id = "P1"
+title = "十月官网改版"
+priority = "P1"
+until = "2026-10-31"
+
+[[items]]
+ref = "dev"
+project = "P1"
+title = "首页开发"
+due = "2026-10-28 18:00"
+estimate = "5d"
+done = ["桌面端和移动端页面", "接入埋点"]
+
+[[items]]
+ref = "qa"
+project = "P1"
+title = "联调测试"
+due = "2026-10-30 18:00"
+estimate = "2d"
+depends_on = ["dev"]
+
+[[steps]]
+say = "明天把新首页上线"
+  [[steps.expect]]
+  type = "reply"
+  to = "owner"
+  contains_any = ["来不及", "不现实", "不可行", "做不到", "无法", "不建议", "风险", "不太可能", "不可能", "赶不上", "不够"]
+  why = "要当场指出不可行"
+  [[steps.expect]]
+  type = "reply"
+  to = "owner"
+  contains_any = ["方案", "选项", "建议", "可以先", "或者", "缩小", "除非", "先上"]
+  why = "要给出可选的做法"

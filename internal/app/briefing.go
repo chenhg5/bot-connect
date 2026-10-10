@@ -3,7 +3,9 @@ package app
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -318,8 +320,25 @@ func ParseWhen(s string, now time.Time) (*time.Time, error) {
 	if s == "" {
 		return nil, nil
 	}
+	// Drop annotations ("下周三（10月15日）"): the person's words decide.
+	for _, p := range [][2]string{{"（", "）"}, {"(", ")"}} {
+		if i := strings.Index(s, p[0]); i > 0 {
+			if j := strings.Index(s[i:], p[1]); j > 0 {
+				s = strings.TrimSpace(s[:i] + s[i+j+len(p[1]):])
+			}
+		}
+	}
 	if t, ok := parseChinese(s, now); ok {
 		return &t, nil
+	}
+	// "下周三 10-14": the words win; a different date attached is a mistake to point out.
+	if i := strings.IndexAny(s, " 　"); i > 0 {
+		if t, ok := parseChinese(strings.TrimSpace(s[:i]), now); ok {
+			if other, err := ParseWhen(strings.TrimSpace(s[i:]), now); err == nil && other != nil && other.Format("01-02") != t.Format("01-02") {
+				return nil, Invalid("%q is %s, not %s — pass just the person's words (e.g. %q)", strings.TrimSpace(s[:i]), DescribeDate(t, now), other.Format("01-02"), strings.TrimSpace(s[:i]))
+			}
+			return &t, nil
+		}
 	}
 	if d, err := parseDuration(s, 24*time.Hour); err == nil {
 		t := now.Add(d)
@@ -333,6 +352,13 @@ func ParseWhen(s string, now time.Time) (*time.Time, error) {
 			}
 			return &t, nil
 		}
+	}
+	if t, err := time.ParseInLocation("01-02", s, loc); err == nil { // a date means the end of that working day
+		t = time.Date(now.Year(), t.Month(), t.Day(), 18, 0, 0, 0, loc)
+		if t.Before(now.Add(-24 * time.Hour)) {
+			t = t.AddDate(1, 0, 0)
+		}
+		return &t, nil
 	}
 	if t, err := time.ParseInLocation("01-02 15:04", s, loc); err == nil {
 		t = time.Date(now.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), 0, 0, loc)
@@ -348,7 +374,7 @@ func ParseWhen(s string, now time.Time) (*time.Time, error) {
 		}
 		return &at, nil
 	}
-	return nil, Invalid("can't read time %q (use 下周三 / 周五 18:00 / 明天下午 / 月底 / 17号, 2026-10-17 18:00, 10-17 18:00, 18:00, or 2h / 3d)", s)
+	return nil, Invalid("can't read time %q: pass exactly what the person said (下周三 / 周五 18:00 / 明天下午 / 月底 / 17号), without your own date; or 2026-10-17 18:00 / 2h / 3d", s)
 }
 
 // ParseEffort reads an estimate of effort: "2h", "30m", "1d" (= 8 working hours).
@@ -373,6 +399,9 @@ func parseDuration(s string, day time.Duration) (time.Duration, error) {
 	}
 	return d, nil
 }
+
+// clockRe: "18:00", "18点", "3点半".
+var clockRe = regexp.MustCompile(`^(\d{1,2})(?::(\d{2})|点(半)?)$`)
 
 var cnWeekday = map[string]time.Weekday{"一": time.Monday, "二": time.Tuesday, "三": time.Wednesday, "四": time.Thursday,
 	"五": time.Friday, "六": time.Saturday, "日": time.Sunday, "天": time.Sunday}
@@ -470,14 +499,21 @@ func parseChinese(s string, now time.Time) (time.Time, bool) {
 	case strings.HasPrefix(rest, "晚上"):
 		h = 21
 	default:
-		var hh, mm int
-		if n, _ := fmt.Sscanf(rest, "%d:%d", &hh, &mm); n == 2 && hh <= 24 && mm < 60 {
-			h, m = hh, mm
-		} else if n, _ := fmt.Sscanf(rest, "%d点", &hh); n == 1 && hh <= 24 {
-			h = hh
-		} else {
+		mt := clockRe.FindStringSubmatch(rest)
+		if mt == nil {
 			return time.Time{}, false
 		}
+		hh, _ := strconv.Atoi(mt[1])
+		mm := 0
+		if mt[2] != "" {
+			mm, _ = strconv.Atoi(mt[2])
+		} else if mt[3] == "半" {
+			mm = 30
+		}
+		if hh > 24 || mm > 59 {
+			return time.Time{}, false
+		}
+		h, m = hh, mm
 	}
 	return date.Add(time.Duration(h)*time.Hour + time.Duration(m)*time.Minute), true
 }
@@ -503,6 +539,33 @@ func (a *App) Overview(ctx context.Context) string {
 		if p.Timebox.Until != nil {
 			b.WriteString(" 截止 " + p.Timebox.Until.Format("01-02"))
 		}
+		if ms := p.ActiveMembers(w.Now); len(ms) > 0 {
+			var parts []string
+			for _, m := range ms {
+				parts = append(parts, roleText(m))
+			}
+			b.WriteString("；成员：" + strings.Join(parts, "，"))
+		}
+		items := w.ItemsOf(id, false)
+		sort.Slice(items, func(i, j int) bool {
+			if (items[i].Due == nil) != (items[j].Due == nil) {
+				return items[i].Due != nil
+			}
+			return items[i].Due != nil && items[i].Due.Before(*items[j].Due)
+		})
+		for i, it := range items {
+			if i == 4 {
+				fmt.Fprintf(&b, "\n    …还有 %d 件", len(items)-4)
+				break
+			}
+			b.WriteString("\n    · " + ItemLine(w, it))
+		}
+		if rem := remainingEffort(w, id); rem > 0 {
+			fmt.Fprintf(&b, "；剩余工作量约 %.1f 人天", rem.Hours()/8)
+			if pr.Forecast != nil {
+				b.WriteString("，按当前节奏最早 " + pr.Forecast.Format("01-02 15:04") + " 全部完成")
+			}
+		}
 		b.WriteString("\n")
 	}
 	var people []string
@@ -519,4 +582,68 @@ func (a *App) Overview(ctx context.Context) string {
 	sort.Strings(people)
 	b.WriteString("人力：" + strings.Join(people, "、") + "（详情用 brief / find_people）\n")
 	return b.String()
+}
+
+// remainingEffort sums the estimates of a project's open leaf items.
+func remainingEffort(w *world.World, p ProjectID) time.Duration {
+	g := w.Graph()
+	var total time.Duration
+	for _, it := range w.ItemsOf(p, false) {
+		if it.Kind == planning.Milestone || len(g.Children(it.ID)) > 0 {
+			continue
+		}
+		total += it.Estimate
+	}
+	return total
+}
+
+// DescribeDate says a date the way people check it: "10-21 周三（下周）18:00".
+func DescribeDate(t, now time.Time) string {
+	wd := []string{"日", "一", "二", "三", "四", "五", "六"}[t.Weekday()]
+	day := func(x time.Time) time.Time { return time.Date(x.Year(), x.Month(), x.Day(), 0, 0, 0, 0, x.Location()) }
+	monday := func(x time.Time) time.Time { d := day(x); return d.AddDate(0, 0, -((int(d.Weekday()) + 6) % 7)) }
+	week := ""
+	switch int(monday(t).Sub(monday(now)).Hours() / 24 / 7) {
+	case 0:
+		week = "本周"
+	case 1:
+		week = "下周"
+	case 2:
+		week = "下下周"
+	}
+	if day(t).Equal(day(now)) {
+		week = "今天"
+	} else if day(t).Equal(day(now).AddDate(0, 0, 1)) {
+		week = "明天"
+	}
+	out := t.Format("01-02") + " 周" + wd
+	if week == "下周" || week == "下下周" {
+		week += "，" + monday(t).Format("01-02") + " 那一周"
+	}
+	if week != "" {
+		out += "（" + week + "）"
+	}
+	return out + " " + t.Format("15:04")
+}
+
+// Item returns one item.
+func (a *App) Item(id ItemID) (planning.Item, bool) {
+	var out planning.Item
+	var ok bool
+	a.Store.Read(func(s *State) { out, ok = s.Items[id] })
+	return out, ok
+}
+
+// relRe finds relative dates people write.
+var relRe = regexp.MustCompile(`(大后天|后天|明天|今天|今晚|(?:下下|下|本|这)?(?:周|星期|礼拜)[一二三四五六日天](?:\s*\d{1,2}(?::\d{2}|点半?))?|月底|\d{1,2}[号日])`)
+
+// RelativeDates resolves every relative date phrase in a text ("下周三前…").
+func RelativeDates(text string, now time.Time) map[string]time.Time {
+	out := map[string]time.Time{}
+	for _, m := range relRe.FindAllString(text, -1) {
+		if t, ok := parseChinese(m, now); ok {
+			out[m] = t
+		}
+	}
+	return out
 }

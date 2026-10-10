@@ -388,6 +388,27 @@ func (h *Hub) SetIntake(intake func(in Inbound, user identity.User, convKey stri
 	h.opts.Intake, h.opts.TurnDone = intake, turnDone
 }
 
+// Idle reports whether no turn is running or waiting.
+func (h *Hub) Idle() bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, l := range h.lanes {
+		if l.running || len(l.pending) > 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// SetOwnerChat records the owner's private chat on a platform (so replies
+// and notices have somewhere to go before the owner has written).
+func (h *Hub) SetOwnerChat(platform, chatID string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.ownerChat[platform] = chatID
+	h.convLocked(h.convKey(platform, chatID), platform, chatID, false)
+}
+
 // MainKey is the main session: the bot's one continuous working context.
 // Everyone's messages and the scaffold's signals arrive there; each turn
 // runs with the rights of whoever it is for (never mixing a colleague's

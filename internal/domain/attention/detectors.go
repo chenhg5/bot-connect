@@ -61,7 +61,7 @@ func (WillMiss) Detect(c *Context) []Signal {
 		if !it.Open() || it.Due == nil || c.Now.After(*it.Due) || !ok || !f.After(*it.Due) {
 			continue
 		}
-		own := c.Now.Add(insight.Remaining(it, c.Now, c.Pace))
+		own := c.Now.Add(insight.Remaining(c.World, it, c.Pace))
 		if !own.After(*it.Due) {
 			continue // late only because of a dependency: LateDependency reports it
 		}
@@ -181,7 +181,7 @@ func (LateDependency) Detect(c *Context) []Signal {
 		if !it.Open() || it.Due == nil || !ok || !f.After(*it.Due) || c.Now.After(*it.Due) {
 			continue
 		}
-		if c.Now.Add(insight.Remaining(it, c.Now, c.Pace)).After(*it.Due) {
+		if c.Now.Add(insight.Remaining(c.World, it, c.Pace)).After(*it.Due) {
 			continue // late by itself: WillMiss
 		}
 		var late []string

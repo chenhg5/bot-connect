@@ -1,0 +1,31 @@
+id = "G17"
+title = "agent 能做的不找人：查日志交给有权限的 agent"
+critical = true
+now = "2026-10-12 10:00"
+
+[[agents]]
+id = "ops-reader"
+description = "能读线上日志和监控的 agent"
+capabilities = ["gcloud-logging:read", "metrics:read"]
+
+[[people]]
+id = "lisi"
+name = "李四"
+description = "后端工程师，有日志权限"
+consent = true
+
+[[projects]]
+id = "P3"
+title = "TapNow 稳定性"
+priority = "P0"
+
+[[steps]]
+say = "帮我查一下 view_media 最近偶发的 Vertex 500 报错日志，看看是什么原因"
+  [[steps.expect]]
+  type = "assignment"
+  worker = "ops-reader"
+  why = "agent 有日志权限，应交给 agent"
+  [[steps.expect]]
+  type = "no_assignment"
+  worker = "lisi"
+  why = "不该找人做 agent 能做的事"

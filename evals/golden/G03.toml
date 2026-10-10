@@ -1,0 +1,52 @@
+id = "G3"
+title = "带截止的新需求：按项目角色找人、日期正确、告诉主人"
+critical = true
+now = "2026-10-12 10:00"
+
+[[people]]
+id = "wangwu"
+name = "王五"
+description = "数据分析师"
+consent = true
+
+[[people]]
+id = "lisi"
+name = "李四"
+description = "设计师"
+consent = true
+
+[[projects]]
+id = "P1"
+title = "十月官网改版"
+priority = "P1"
+until = "2026-10-31"
+  [[projects.members]]
+  worker = "wangwu"
+  role = "数据负责人"
+  duties = ["埋点", "指标"]
+  [[projects.members]]
+  worker = "lisi"
+  role = "设计负责人"
+  duties = ["视觉"]
+
+[[steps]]
+say = "下周三前把官网改版的埋点方案定下来，要有指标清单和事件定义"
+  [[steps.expect]]
+  type = "assignment"
+  worker = "wangwu"
+  title = "埋点"
+  due = "2026-10-21 18:00"
+  why = "按角色找到数据负责人；“下周三”从周一算是 10-21"
+  [[steps.expect]]
+  type = "no_assignment"
+  worker = "lisi"
+  [[steps.expect]]
+  type = "reply"
+  to = "wangwu"
+  contains_any = ["埋点"]
+  why = "王五收到请求"
+  [[steps.expect]]
+  type = "reply"
+  to = "owner"
+  contains_any = ["王五", "wangwu"]
+  why = "告诉主人交给了谁"

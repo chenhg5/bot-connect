@@ -1,0 +1,41 @@
+id = "G6"
+title = "还价：说明影响请主人决定，不自作主张"
+critical = false
+now = "2026-10-12 10:00"
+
+[[people]]
+id = "wangwu"
+name = "王五"
+consent = true
+
+[[projects]]
+id = "P1"
+title = "十月官网改版"
+priority = "P1"
+until = "2026-10-31"
+
+[[items]]
+ref = "track"
+project = "P1"
+title = "埋点方案"
+due = "2026-10-14 18:00"
+
+[[assignments]]
+item = "track"
+worker = "wangwu"
+why = "knowledge"
+goal = "定首页埋点方案"
+
+[[steps]]
+from = "wangwu"
+say = "这周排不过来，下周一可以吗"
+  [[steps.expect]]
+  type = "assignment"
+  worker = "wangwu"
+  status = "countered"
+  why = "登记为还价，等主人决定"
+  [[steps.expect]]
+  type = "reply"
+  to = "owner"
+  contains_any = ["下周一", "10-19", "10/19", "19"]
+  why = "把提议的时间告诉主人"

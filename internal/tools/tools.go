@@ -29,6 +29,9 @@ type TurnContext struct {
 	// Allow, if non-empty, limits the tools this brain may see and call
 	// (brain.tools in config). Privilege checks still apply on top.
 	Allow map[string]bool
+	// Focus: the signals this turn was woken for (their answer is the
+	// turn's final message).
+	Focus []string
 }
 
 func (tc TurnContext) allowed(t *Tool) bool {
@@ -271,7 +274,7 @@ func New(env Env) *Registry {
 
 	r.add(Tool{
 		Name:        "list_workers",
-		Description: "List the workers with live status: idle/busy, queue length, last task. A worker is one agent session (configured, or an existing session you delegated to).",
+		Description: "The agent-session pool only (Claude Code / Codex sessions and templates) with live status. People and every other kind of worker are in the brief's roster; to decide who should do something use find_people.",
 		Handler: func(ctx context.Context, tc TurnContext, a map[string]any) (string, error) {
 			return workers.Overview(env.scope(tc)), nil
 		},

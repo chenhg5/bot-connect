@@ -54,8 +54,20 @@ func (p PaceStats) Factor(w WorkerID) float64 {
 
 func (p PaceStats) Samples(w WorkerID) int { return len(p.ratios[w]) }
 
-// Remaining work on an item, adjusted by its owner's pace.
-func Remaining(it planning.Item, now time.Time, pace Pace) time.Duration {
+// CalendarFactor is wall-clock time per hour of effort: people work about
+// 8 hours a day, agents run around the clock. Unassigned work is assumed to
+// go to a person.
+func CalendarFactor(w *world.World, owner WorkerID) float64 {
+	if owner != "" && w.Workers[owner].Kind.Agentic() {
+		return 1
+	}
+	return 3
+}
+
+// Remaining is the wall-clock time an item still needs: its estimate,
+// adjusted by its owner's pace and working hours, minus the time already
+// spent on it.
+func Remaining(w *world.World, it planning.Item, pace Pace) time.Duration {
 	if it.Estimate <= 0 || !it.Open() {
 		return 0
 	}
@@ -63,11 +75,12 @@ func Remaining(it planning.Item, now time.Time, pace Pace) time.Duration {
 	if pace != nil && it.Owner != "" {
 		f = pace.Factor(it.Owner)
 	}
-	total := time.Duration(float64(it.Estimate) * f)
+	cf := CalendarFactor(w, it.Owner)
+	total := time.Duration(float64(it.Estimate) * f * cf)
 	if it.Status == planning.Active && !it.StartedAt.IsZero() {
-		total -= now.Sub(it.StartedAt)
+		total -= w.Now.Sub(it.StartedAt)
 	}
-	return max(total, it.Estimate/10) // started work is never "done" by the clock alone
+	return max(total, time.Duration(float64(it.Estimate)*cf/10)) // started work is never "done" by the clock alone
 }
 
 // Forecast is the expected finish of every open item, following dependencies.
@@ -89,7 +102,7 @@ func Forecast(w *world.World, pace Pace) map[ItemID]time.Time {
 				}
 			}
 		}
-		t := start.Add(Remaining(it, w.Now, pace))
+		t := start.Add(Remaining(w, it, pace))
 		out[id] = t
 		return t
 	}

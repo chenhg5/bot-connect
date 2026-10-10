@@ -1,0 +1,40 @@
+id = "G5"
+title = "人的回复归位：登记到对的委托，并告诉主人"
+critical = true
+now = "2026-10-12 10:00"
+
+[[people]]
+id = "wangwu"
+name = "王五"
+consent = true
+
+[[projects]]
+id = "P1"
+title = "十月官网改版"
+priority = "P1"
+
+[[items]]
+ref = "track"
+project = "P1"
+title = "埋点方案"
+due = "2026-10-16 18:00"
+
+[[assignments]]
+item = "track"
+worker = "wangwu"
+why = "knowledge"
+goal = "定首页埋点方案：指标清单和事件定义"
+
+[[steps]]
+from = "wangwu"
+say = "收到，接了，周三给你"
+  [[steps.expect]]
+  type = "assignment"
+  worker = "wangwu"
+  status = "accepted|working"
+  why = "登记为接下"
+  [[steps.expect]]
+  type = "reply"
+  to = "owner"
+  contains_any = ["王五", "接"]
+  why = "主人知道他接了"

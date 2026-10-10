@@ -338,7 +338,18 @@ func (a *App) afterWorkerEvent(ctx context.Context, as delegation.Assignment, r 
 		if a.isAgent(as.Worker) {
 			return // agents accept by queueing; no news
 		}
-		text = head + " 已接下。" + r.Note
+		// Nothing to decide: tell the owner in one line, don't wake the brain.
+		line := fmt.Sprintf("✅ %s 接下了 %s「%s」", as.Worker, as.ID, oneLine(as.Brief.Goal, 40))
+		if as.ETA != nil {
+			line += "，预计 " + fmtDue(as.ETA)
+		} else if as.Brief.Due != nil {
+			line += "，截止 " + fmtDue(as.Brief.Due)
+		}
+		if r.Note != "" {
+			line += "（" + oneLine(r.Note, 60) + "）"
+		}
+		a.tellOwner(ctx, line)
+		return
 	case "decline":
 		text = head + " 被拒绝：" + firstNonEmpty(r.Note, "没说原因") + "。事项已回到待分派。"
 	case "counter":
@@ -521,4 +532,17 @@ func oneLine(s string, n int) string {
 		return string(r[:n]) + "…"
 	}
 	return s
+}
+
+// tellOwner sends the owner a one-line notice (no brain involved).
+func (a *App) tellOwner(ctx context.Context, text string) {
+	var owner workforce.Worker
+	var ok bool
+	a.Store.Read(func(s *State) { owner, ok = s.Workers[Owner] })
+	if !ok {
+		return
+	}
+	if d := a.driverFor(owner); d != nil {
+		_ = d.Notify(ctx, owner, delegation.Assignment{}, Notice{Kind: "message", Text: text})
+	}
 }

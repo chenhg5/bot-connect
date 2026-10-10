@@ -1,0 +1,40 @@
+id = "G7"
+title = "验收：交付缺了完成标准的一项就返工"
+critical = true
+now = "2026-10-12 10:00"
+
+[[agents]]
+id = "web-dev"
+description = "官网前端开发 agent"
+capabilities = ["repo:website:write"]
+
+[[projects]]
+id = "P1"
+title = "十月官网改版"
+priority = "P1"
+
+[[items]]
+ref = "dev"
+project = "P1"
+title = "首页开发"
+due = "2026-10-20 18:00"
+done = ["桌面端页面", "移动端适配"]
+
+[[assignments]]
+item = "dev"
+worker = "web-dev"
+status = "accepted"
+
+[[steps]]
+deliver = "web-dev"
+result = "首页桌面端页面已完成，PR #12 已提交，CI 通过。"
+  [[steps.expect]]
+  type = "no_assignment"
+  worker = "web-dev"
+  status = "verified"
+  why = "缺移动端，不能验收通过"
+  [[steps.expect]]
+  type = "reply"
+  to = "owner"
+  contains_any = ["移动端"]
+  why = "说清楚缺什么"

@@ -1,0 +1,39 @@
+id = "G12"
+title = "没事就安静：一切正常时不发消息"
+critical = true
+now = "2026-10-12 10:00"
+
+[[people]]
+id = "wangwu"
+name = "王五"
+consent = true
+
+[[projects]]
+id = "P1"
+title = "十月官网改版"
+priority = "P1"
+until = "2026-10-31"
+
+[[items]]
+ref = "track"
+project = "P1"
+title = "埋点方案"
+due = "2026-10-20 18:00"
+estimate = "1d"
+
+[[assignments]]
+item = "track"
+worker = "wangwu"
+why = "knowledge"
+status = "accepted"
+
+[[steps]]
+advance = "31m"
+  [[steps.expect]]
+  type = "no_message"
+  why = "没有问题就不打扰任何人"
+
+[[steps]]
+advance = "1h"
+  [[steps.expect]]
+  type = "no_message"

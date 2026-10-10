@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -96,7 +97,7 @@ func addPM(r *Registry, env Env) {
 		OwnerOnly: true,
 		Schema:    obj(props{"project": str("one project in full (card, decisions, conventions, all open items)")}),
 		Handler: func(ctx context.Context, tc TurnContext, a map[string]any) (string, error) {
-			out := pm.Briefing(ctx, app.BriefingOptions{Focus: ProjectID(s(a, "project")), MaxItems: n(a, "max_items", 8)})
+			out := pm.Briefing(ctx, app.BriefingOptions{Focus: projectArg(pm, a), MaxItems: n(a, "max_items", 8)})
 			if out == "" {
 				return "(nothing to manage yet: no projects, no open items)", nil
 			}
@@ -107,7 +108,8 @@ func addPM(r *Registry, env Env) {
 		Name: "find_people",
 		Description: "Who should do something, ranked with reasons: project roles first, then company roles, skills, capabilities (agents first: a person is only a fallback when an agent can do it), " +
 			"approval rules (resolved to whoever holds the role now), people who can act in the real world, and who already has the context. Unavailable or non-consenting workers are listed as excluded, with why.",
-		OwnerOnly: true,
+		// Everyone may ask who does what (roles are the company directory);
+		// what they may then do is checked separately.
 		Schema: obj(props{
 			"need":       str("what is needed, in words: “定埋点方案”, “review PR touching media”"),
 			"project":    str("project id (default: the company)"),
@@ -118,7 +120,7 @@ func addPM(r *Registry, env Env) {
 			"item":       str("an item this continues (prefers whoever has the context)"),
 		}),
 		Handler: func(ctx context.Context, tc TurnContext, a map[string]any) (string, error) {
-			need := insight.Need{Project: ProjectID(firstLine(s(a, "project"), string(OrgProject))), Text: s(a, "need"), Kind: NeedKind(s(a, "kind")),
+			need := insight.Need{Project: projectArg(pm, a), Text: s(a, "need"), Kind: NeedKind(s(a, "kind")),
 				Action: s(a, "action"), Scope: s(a, "scope"), Item: ItemID(s(a, "item")), By: actorOf(pm, tc)}
 			if c := s(a, "capability"); c != "" {
 				x := workforce.ParseCapability(c)
@@ -163,7 +165,7 @@ func addPM(r *Registry, env Env) {
 			"depends_on": arr("item ids this waits for"),
 		}, "title"),
 		Handler: func(ctx context.Context, tc TurnContext, a map[string]any) (string, error) {
-			sp, err := itemSpec(pm, a)
+			sp, err := itemSpec(pm, tc, a)
 			if err != nil {
 				return "", err
 			}
@@ -173,7 +175,7 @@ func addPM(r *Registry, env Env) {
 			}
 			out := "Planned " + string(it.ID) + "「" + it.Title + "」in " + string(it.Project)
 			if it.Due != nil {
-				out += ", due " + it.Due.Format("2006-01-02 15:04 Mon")
+				out += ", due " + app.DescribeDate(*it.Due, pm.Clock.Now())
 			}
 			return out, nil
 		},
@@ -205,7 +207,7 @@ func addPM(r *Registry, env Env) {
 				if s(a, "goal") == "" {
 					return "", &ToolError{KindInvalid, "give item, or goal (and project) to create one"}
 				}
-				sp, err := itemSpec(pm, map[string]any{"project": a["project"], "title": a["goal"], "done": a["done"], "due": a["due"], "estimate": a["estimate"]})
+				sp, err := itemSpec(pm, tc, map[string]any{"project": a["project"], "title": a["goal"], "done": a["done"], "due": a["due"], "estimate": a["estimate"]})
 				if err != nil {
 					return "", err
 				}
@@ -215,7 +217,7 @@ func addPM(r *Registry, env Env) {
 				}
 				itemID = it.ID
 			}
-			due, err := app.ParseWhen(s(a, "due"), pm.Clock.Now())
+			due, err := dueArg(pm, tc, s(a, "due"))
 			if err != nil {
 				return "", domainErr(err)
 			}
@@ -238,7 +240,7 @@ func addPM(r *Registry, env Env) {
 			}
 			dueText := ""
 			if as.Brief.Due != nil {
-				dueText = ", due " + as.Brief.Due.Format("2006-01-02 15:04 Mon")
+				dueText = ", due " + app.DescribeDate(*as.Brief.Due, pm.Clock.Now())
 			}
 			return fmt.Sprintf("%s → %s（%s，status %s — not accepted yet unless it says accepted）on item %s%s; the result comes back here.", as.ID, as.Worker, as.Kind, as.Status, as.Item, dueText), nil
 		},
@@ -250,6 +252,9 @@ func addPM(r *Registry, env Env) {
 		Schema: obj(props{"assignment": str("assignment id, e.g. A12"), "action": enum("", "verify", "revise", "cancel", "answer_question", "accept_counter"),
 			"note": str("what's missing / the answer / why")}, "assignment", "action"),
 		Handler: func(ctx context.Context, tc TurnContext, a map[string]any) (string, error) {
+			if s(a, "action") == "accept_counter" && !ownerSpoke(pm, tc) {
+				return "", &ToolError{KindPermission, "a new deadline is the requester's decision: tell them the proposal and its impact, and accept it only in the turn where they agree"}
+			}
 			if err := pm.Review(ctx, actorOf(pm, tc), AssignmentID(s(a, "assignment")), s(a, "action"), s(a, "note")); err != nil {
 				return "", domainErr(err)
 			}
@@ -347,13 +352,19 @@ func addPM(r *Registry, env Env) {
 	})
 	r.add(Tool{
 		Name:        "reply",
-		Description: "Answer a signal where it came from (the private chat, the group, the conversation that asked) — you don't pick the channel. Marks the signal handled unless keep_open.",
+		Description: "Answer another signal in the inbox where it came from (its private chat or group) — you don't pick the channel. Not for the signal(s) this turn is about: their answer is your final message. Marks the signal handled unless keep_open.",
 		OwnerOnly:   true,
 		Schema:      obj(props{"signal": str("signal id"), "text": str("the reply (Markdown ok)"), "keep_open": boolean("leave the signal open")}, "signal", "text"),
 		Handler: func(ctx context.Context, tc TurnContext, a map[string]any) (string, error) {
 			sig, ok := pm.Signal(s(a, "signal"))
 			if !ok {
 				return "", &ToolError{KindNotFound, "no signal " + s(a, "signal")}
+			}
+			for _, f := range tc.Focus {
+				if f == sig.ID {
+					return "", &ToolError{KindInvalid, sig.ID + " is what this turn is about: write the answer as your final message (it goes back to " +
+						"where the signal came from); use reply only for other signals"}
+				}
 			}
 			conv := sig.ReplyTo.Conv
 			if conv == "" {
@@ -370,7 +381,7 @@ func addPM(r *Registry, env Env) {
 	})
 	r.add(Tool{
 		Name: "contact",
-		Description: "Get a message to a person (not an agent): say who, what, how urgent, whether you need an answer, and what it's about. bot-connect picks the channel " +
+		Description: "A question or a note to a person (not an agent) — NOT for handing them work (that is delegate: tracked, followed up, verified). Say who, what, how urgent, whether you need an answer, and what it's about. bot-connect picks the channel " +
 			"(chat, urgent call, email…) from their contact routes, respects their hours and reminder limits, and brings their answer back as a signal about the same thing.",
 		OwnerOnly: true,
 		Schema: obj(props{
@@ -387,6 +398,11 @@ func addPM(r *Registry, env Env) {
 			if err != nil {
 				return "", domainErr(err)
 			}
+			if id := ItemID(s(a, "item")); id != "" {
+				if it, ok := pm.Item(id); ok && it.Open() && it.Assignment == "" {
+					return "", &ToolError{KindInvalid, fmt.Sprintf("%s has nobody on it yet: to hand it to %s use delegate (tracked, followed up, verified); contact is for questions and notes", id, who)}
+				}
+			}
 			u := map[string]workforce.Urgency{"": workforce.Normal, "normal": workforce.Normal, "reminder": workforce.Reminder,
 				"urgent": workforce.Urgent, "critical": workforce.Critical}[s(a, "urgency")]
 			expect := true
@@ -394,7 +410,7 @@ func addPM(r *Registry, env Env) {
 				expect = v
 			}
 			id, err := pm.Contact(ctx, actorOf(pm, tc), who, s(a, "message"), u, expect,
-				inbox.Refs{Project: ProjectID(s(a, "project")), Item: ItemID(s(a, "item")), Assignment: AssignmentID(s(a, "assignment"))})
+				inbox.Refs{Project: projectArg(pm, a), Item: ItemID(s(a, "item")), Assignment: AssignmentID(s(a, "assignment"))})
 			if err != nil {
 				return "", domainErr(err)
 			}
@@ -484,7 +500,7 @@ func addPM(r *Registry, env Env) {
 					a[k] = string(id)
 				}
 			}
-			p, err := pm.ChangeProject(ctx, by, ProjectID(s(a, "project")), func(p *portfolio.Project, now time.Time) ([]Event, error) {
+			p, err := pm.ChangeProject(ctx, by, projectArg(pm, a), func(p *portfolio.Project, now time.Time) ([]Event, error) {
 				var evs []Event
 				add := func(e []Event, err error) error { evs = append(evs, e...); return err }
 				if v := s(a, "priority"); v != "" {
@@ -554,14 +570,14 @@ func addPM(r *Registry, env Env) {
 				}
 				return "Completed " + string(id), nil
 			case s(a, "due") != "":
-				due, err := app.ParseWhen(s(a, "due"), pm.Clock.Now())
+				due, err := dueArg(pm, tc, s(a, "due"))
 				if err != nil {
 					return "", domainErr(err)
 				}
 				if err := pm.RescheduleItem(ctx, by, id, due); err != nil {
 					return "", domainErr(err)
 				}
-				return "Rescheduled " + string(id) + " to " + due.Format("01-02 15:04"), nil
+				return "Rescheduled " + string(id) + " to " + app.DescribeDate(*due, pm.Clock.Now()), nil
 			}
 			return "", &ToolError{KindInvalid, "give due, drop or complete"}
 		},
@@ -585,9 +601,8 @@ func addPM(r *Registry, env Env) {
 	})
 }
 
-func itemSpec(pm *app.App, a map[string]any) (planning.Spec, error) {
-	now := pm.Clock.Now()
-	due, err := app.ParseWhen(s(a, "due"), now)
+func itemSpec(pm *app.App, tc TurnContext, a map[string]any) (planning.Spec, error) {
+	due, err := dueArg(pm, tc, s(a, "due"))
 	if err != nil {
 		return planning.Spec{}, domainErr(err)
 	}
@@ -599,7 +614,7 @@ func itemSpec(pm *app.App, a map[string]any) (planning.Spec, error) {
 	if err != nil {
 		return planning.Spec{}, err
 	}
-	sp := planning.Spec{Project: ProjectID(firstLine(s(a, "project"), string(OrgProject))), Parent: ItemID(s(a, "parent")), Title: s(a, "title"),
+	sp := planning.Spec{Project: projectArg(pm, a), Parent: ItemID(s(a, "parent")), Title: s(a, "title"),
 		Acceptance: strs(a, "done"), Due: due, Estimate: est, Needs: needs}
 	if a["milestone"] == true {
 		sp.Kind = planning.Milestone
@@ -615,4 +630,69 @@ func itemSpec(pm *app.App, a map[string]any) (planning.Spec, error) {
 		sp.DependsOn = append(sp.DependsOn, ItemID(d))
 	}
 	return sp, nil
+}
+
+// ownerSpoke reports whether this turn carries a message from the owner side
+// (decisions reserved for people can't be taken in turns the scaffold woke).
+func ownerSpoke(pm *app.App, tc TurnContext) bool {
+	if len(tc.Focus) == 0 {
+		return tc.Caller.Privileged() && tc.Caller.ID != "bot-connect" // a turn outside the main session: the caller is the speaker
+	}
+	for _, id := range tc.Focus {
+		if x, ok := pm.Signal(id); ok && (x.Source == inbox.DirectMessage || x.Source == inbox.Mention) && x.Actor.Privileged() {
+			return true
+		}
+	}
+	return false
+}
+
+// projectArg reads a project by id or title (default: the company).
+func projectArg(pm *app.App, a map[string]any) ProjectID { return pm.ResolveProject(s(a, "project")) }
+
+// dueArg reads a date for a tool. When the message this turn handles says a
+// relative date ("下周三前…") and the brain's date falls on the same weekday
+// in a different week, it is the same intent resolved wrongly (the model's
+// calendar, not the person's words) and is refused.
+func dueArg(pm *app.App, tc TurnContext, raw string) (*time.Time, error) {
+	now := pm.Clock.Now()
+	t, err := app.ParseWhen(raw, now)
+	if err != nil || t == nil {
+		return t, err
+	}
+	said := map[string]time.Time{}
+	for _, id := range tc.Focus {
+		if x, ok := pm.Signal(id); ok && (x.Source == inbox.DirectMessage || x.Source == inbox.Mention) {
+			for k, v := range app.RelativeDates(x.Body, now) {
+				said[k] = v
+			}
+		}
+	}
+	day := t.Format("2006-01-02")
+	var clash []string
+	for k, v := range said {
+		if v.Format("2006-01-02") == day {
+			return t, nil
+		}
+		if v.Weekday() == t.Weekday() {
+			clash = append(clash, fmt.Sprintf("%s = %s", k, app.DescribeDate(v, now)))
+		}
+	}
+	if len(clash) == 0 {
+		return t, nil
+	}
+	sort.Strings(clash)
+	return nil, &ToolError{KindInvalid, fmt.Sprintf("the person said %s; your date is %s — pass their words exactly (e.g. due=%q)",
+		strings.Join(clash, ", "), app.DescribeDate(*t, now), firstKey(said))}
+}
+
+func firstKey(m map[string]time.Time) string {
+	var ks []string
+	for k := range m {
+		ks = append(ks, k)
+	}
+	sort.Strings(ks)
+	if len(ks) == 0 {
+		return ""
+	}
+	return ks[0]
 }

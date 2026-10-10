@@ -18,6 +18,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/chenhg5/bot-connect/internal/config"
 	"github.com/chenhg5/bot-connect/internal/hub"
@@ -38,6 +39,14 @@ type Brain struct {
 	botName   string
 	ownerName string
 	pm        *app.App
+}
+
+// now is the brain's clock: the PM core's (virtual in simulations), else real time.
+func (b *Brain) now() time.Time {
+	if b.pm != nil {
+		return b.pm.Clock.Now()
+	}
+	return time.Now()
 }
 
 // SetPM gives the brain the project-management core: its briefing goes into
@@ -90,6 +99,9 @@ func (e *unknownToolError) Error() string {
 
 func (b *Brain) HandleTurn(ctx context.Context, t hub.Turn) (string, error) {
 	tc := tools.TurnContext{ConvKey: t.Conv.Key, Platform: t.Conv.Platform, Caller: t.Caller, Allow: b.allow}
+	for _, it := range t.Items {
+		tc.Focus = append(tc.Focus, it.SignalIDs...)
+	}
 	token, done := b.server.Open(tc)
 	defer done()
 

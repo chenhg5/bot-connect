@@ -1,0 +1,17 @@
+id = "G1"
+title = "秒回：寒暄不调用重工具"
+critical = true
+now = "2026-10-12 10:00"
+
+[[steps]]
+say = "在吗"
+  [[steps.expect]]
+  type = "reply"
+  to = "owner"
+  [[steps.expect]]
+  type = "latency"
+  max = "30s"
+  why = "寒暄要快"
+  [[steps.expect]]
+  type = "tool"
+  not_called = ["delegate", "plan_item", "project_setup", "agent_task"]

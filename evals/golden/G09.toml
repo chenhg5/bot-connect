@@ -1,0 +1,60 @@
+id = "G9"
+title = "不回消息的人：工作时间内按上限提醒，过期后告诉主人"
+critical = false
+now = "2026-10-12 10:00"
+
+[[people]]
+id = "wangwu"
+name = "王五"
+consent = true
+work_hours = "09:00-19:00"
+
+[[projects]]
+id = "P1"
+title = "十月官网改版"
+priority = "P1"
+
+[[items]]
+ref = "track"
+project = "P1"
+title = "埋点方案"
+
+[[assignments]]
+item = "track"
+worker = "wangwu"
+why = "knowledge"
+goal = "定首页埋点方案"
+
+[[steps]]
+advance = "5h"
+  [[steps.expect]]
+  type = "reply"
+  to = "wangwu"
+  contains_any = ["提醒"]
+  why = "4 小时没回就提醒"
+
+[[steps]]
+advance = "1h"
+  [[steps.expect]]
+  type = "no_message"
+  to = "wangwu"
+  why = "提醒要有间隔"
+
+[[steps]]
+advance = "12h"
+  [[steps.expect]]
+  type = "no_message"
+  to = "wangwu"
+  why = "夜里不提醒"
+
+[[steps]]
+advance = "40h"
+  [[steps.expect]]
+  type = "assignment"
+  worker = "wangwu"
+  status = "expired"
+  [[steps.expect]]
+  type = "reply"
+  to = "owner"
+  contains_any = ["过期", "没有回应", "没回", "未回复", "没回复"]
+  why = "过期后告诉主人"
