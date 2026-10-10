@@ -128,6 +128,7 @@ func (m *Manager) AttachSession(parent string, in session.Info) (string, error) 
 	}
 	w := m.workers[spec.Name]
 	w.Parent, w.Base, w.UserID = parent, p.base(), p.UserID
+	w.Template, w.Bot = p.Template, p.Bot
 	if p.Base == "" {
 		w.Base = parent
 	}
@@ -258,6 +259,9 @@ type WorkerInfo struct {
 	Running     string    `json:"running_task,omitempty"`
 	Queued      int       `json:"queued"`
 	LastRun     time.Time `json:"last_run,omitempty"`
+	Template    string    `json:"template,omitempty"` // created from this template
+	Branch      string    `json:"branch,omitempty"`
+	CreatedAt   time.Time `json:"created_at,omitempty"`
 }
 
 // Snapshot lists all workers (configured, instances, sub-workers).
@@ -266,13 +270,7 @@ func (m *Manager) Snapshot() []WorkerInfo {
 	defer m.mu.Unlock()
 	var out []WorkerInfo
 	for n, w := range m.workers {
-		wi := WorkerInfo{Name: n, Agent: w.Spec.Agent, Access: w.Spec.Access, Dir: w.Spec.WorkDir, Description: w.Spec.Description,
-			Base: w.Base, User: w.UserID, Parent: w.Parent, Session: w.SessionID, Owned: w.Owned, PerUser: w.Spec.PerUser,
-			Queued: len(w.queue), LastRun: w.LastRun}
-		if w.current != nil {
-			wi.Running = w.current.ID
-		}
-		out = append(out, wi)
+		out = append(out, m.infoLocked(n, w))
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out

@@ -93,6 +93,7 @@ https://github.com/chenhg5/bot-connect/blob/main/config.example.toml.
 | 5 | Which project folders should it be able to work in? For each: agent, one-line description | paths | `[[workers]]` |
 | 6 | For each worker: may it change files and run commands, or only read? | **workspace** · readonly · full | `access` |
 | 7 | Should the bot see your existing sessions in that folder (terminal/IDE ones)? | **no** (only its own) · all sessions in the folder · specific session ids | `dir_sessions`, `sessions` |
+| 7b | Should the bot be able to spin up its own workers for new jobs? Which kinds (e.g. scratch experiments in empty dirs, feature work on a new branch of a repo, read-only reviews of any project under ~/code)? | **one `scratch` template** · none · several | `[[templates]]` |
 | 8 | Who besides you may use it? | **only me** · named colleagues as admins · everyone as members (private workspaces) | `admins`, `members`, `per_user` |
 
 Notes for the agent:
@@ -100,6 +101,9 @@ Notes for the agent:
   dominated by model latency). With Claude Code as the brain and an API provider, the brain runs fully
   isolated (`--bare`); with only the Claude login it uses `--setting-sources ""` instead.
 - Q7: say plainly that "all sessions in the folder" lets the bot read those conversations.
+- Q7b: a template fixes the agent and `access` of every worker made from it — the bot can't raise them.
+  Prefer `workspace = "worktree"` for code changes (own branch, nothing touches the user's checkout) and
+  `access = "readonly"` + `workspace = "existing"` + `roots` for reviews/questions. Keep `max_instances` small.
 - Q8: "members" get **their own copy** of a worker marked `per_user` (own session, own folder or git
   worktree) and can never see the owner's workers or each other's. Visitors can only chat and leave messages.
 
@@ -185,6 +189,27 @@ agent = "claudecode"
 work_dir = "~/docs/handbook"
 description = "team handbook, answers questions only"
 access = "readonly"
+```
+
+Templates (the brain creates and retires workers from these on its own):
+
+```toml
+[[templates]]
+name = "feature-dev"
+description = "develop a feature or fix a bug in myapp, on its own branch"
+agent = "claudecode"
+access = "workspace"
+workspace = "worktree"         # new git worktree + branch bot-connect/<name>
+repo = "~/code/myapp"
+max_instances = 3
+idle_ttl = "24h"
+
+[[templates]]
+name = "reviewer"
+description = "read-only: review code / answer questions about any project under ~/code"
+access = "readonly"
+workspace = "existing"
+roots = ["~/code"]
 ```
 
 Several bots in one process: use `[[bots]]` blocks (each with `[bots.brain]`, `[bots.feishu]` and a
@@ -274,7 +299,8 @@ Inspect what's going on (JSON when piped):
 
 ```bash
 bot-connect bot list                         # bots, channels, brains
-bot-connect worker list                      # workers, their sessions
+bot-connect worker list                      # workers, their sessions (TEMPLATE = created by the brain)
+bot-connect template list                    # templates and how many workers use each
 bot-connect task list --status failed        # tasks; task get --id t3 for one
 bot-connect audit list --since 1h            # every message (with resolved sender), turn, tool call, task
 bot-connect session list --all --limit 10    # agent sessions on this machine (to pick ids for `sessions`)

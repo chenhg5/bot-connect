@@ -54,6 +54,19 @@ role is re-checked at every run and a job whose creator lost it is disabled; job
 that created them, with the creator's rights; fires, skips and disables are audit events (`type: schedule`);
 `bot-connect schedule list|pause|delete` works on a running bot.
 
+## Workers created from templates
+
+The brain can create workers at run time, but only from `[[templates]]` you wrote (and, per bot, only
+those in its `templates` list). Everything that bounds a worker — agent, `access`, `tools`, `read_dirs`,
+`deny_read`, `isolate`, provider — comes from the template; the brain chooses only a name, a purpose, and
+for `workspace = "existing"` / `"worktree"` a directory or repository, which must resolve (symlinks
+followed) under the template's `roots` (or be its `repo`). Worktree workers may also write the repository's
+git dir, so they can commit. Only owner/admin turns can create, update or retire them; they are visible to
+the creating bot's owner/admins only, never to members or visitors. `max_instances` caps each template;
+idle workers are retired after `idle_ttl`. Retiring never deletes work: a worktree with uncommitted changes
+is kept (and is only retired with `force`), a clean one is removed but its branch stays, and `dir`
+workspaces stay on disk. Creating and retiring are audit events (`status: worker_created / worker_retired`).
+
 ## Isolation between people
 
 - Private chats are separate conversations, each with its own brain session.

@@ -26,7 +26,7 @@ func isoSetup(t *testing.T) (*Registry, *worker.Manager, string) {
 		{Name: "proj", Agent: "claudecode", WorkDir: shared, PerUser: "dir"},
 		{Name: "docs", Agent: "claudecode", WorkDir: ro, Access: "readonly"},
 		{Name: "mine", Agent: "claudecode", WorkDir: t.TempDir()},
-	}, data)
+	}, nil, data)
 	if err != nil {
 		t.Fatal(err)
 	}

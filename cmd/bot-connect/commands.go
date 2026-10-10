@@ -45,7 +45,7 @@ func newApp() *cli.App {
 			"bot-connect schema --command \"worker list\"   # a command's flags as JSON",
 		},
 		Children: []*cli.Command{
-			configCmd(), botCmd(), workerCmd(), sessionCmd(), taskCmd(), scheduleCmd(), auditCmd(), feishuCmd(), toolCmd(),
+			configCmd(), botCmd(), workerCmd(), templateCmd(), sessionCmd(), taskCmd(), scheduleCmd(), auditCmd(), feishuCmd(), toolCmd(),
 			schemaCmd(app), versionCmd(),
 		},
 	}
@@ -314,7 +314,7 @@ func openWorkers(c *cli.Ctx) (*config.Config, *worker.Manager, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	wm, err := worker.NewManager(cfg.Workers, cfg.DataDir)
+	wm, err := worker.NewManager(cfg.Workers, cfg.Templates, cfg.DataDir)
 	if err != nil {
 		return nil, nil, &cli.Error{Code: cli.ExitError, Type: "invalid_config", Message: err.Error(), Suggestion: "run: bot-connect config validate"}
 	}
@@ -337,9 +337,9 @@ func workerCmd() *cli.Command {
 					ws := wm.Snapshot()
 					return c.Out(ws, func(w io.Writer) {
 						tw := tabwriter.NewWriter(w, 0, 2, 2, ' ', 0)
-						fmt.Fprintln(tw, "WORKER\tAGENT\tACCESS\tSESSION\tDIR")
+						fmt.Fprintln(tw, "WORKER\tAGENT\tACCESS\tTEMPLATE\tSESSION\tDIR")
 						for _, x := range ws {
-							fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", x.Name, x.Agent, x.Access, short(x.Session), x.Dir)
+							fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n", x.Name, x.Agent, x.Access, orDash(x.Template), short(x.Session), x.Dir)
 						}
 						tw.Flush()
 					})
@@ -374,6 +374,31 @@ func workerCmd() *cli.Command {
 				},
 			},
 		}}
+}
+
+func templateCmd() *cli.Command {
+	return &cli.Command{Name: "template", Summary: "worker templates the brain creates workers from",
+		Desc: "Templates are defined in config ([[templates]]); the brain creates and retires workers from them in chat (worker_create / worker_retire).",
+		Children: []*cli.Command{{
+			Name: "list", Summary: "templates with how many workers use each",
+			Examples: []string{"bot-connect template list", "bot-connect template list --format json"},
+			Flags:    []cli.Flag{configFlag},
+			Run: func(c *cli.Ctx) error {
+				_, wm, err := openWorkers(c)
+				if err != nil {
+					return err
+				}
+				ts := wm.Templates(worker.Scope{})
+				return c.Out(ts, func(w io.Writer) {
+					tw := tabwriter.NewWriter(w, 0, 2, 2, ' ', 0)
+					fmt.Fprintln(tw, "TEMPLATE\tAGENT\tACCESS\tWORKSPACE\tIN USE\tDESCRIPTION")
+					for _, t := range ts {
+						fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%d/%d\t%s\n", t.Name, t.Agent, t.Access, t.Workspace, t.InUse, t.MaxInstances, t.Description)
+					}
+					tw.Flush()
+				})
+			},
+		}}}
 }
 
 func taskCmd() *cli.Command {

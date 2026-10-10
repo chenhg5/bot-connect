@@ -30,7 +30,7 @@ func rpc(t *testing.T, url, body string) map[string]any {
 }
 
 func TestMCPPrivilege(t *testing.T) {
-	wm, _ := worker.NewManager(nil, t.TempDir())
+	wm, _ := worker.NewManager(nil, nil, t.TempDir())
 	s := New(tools.New(tools.Env{Bot: "b", Workers: wm, Messenger: nopMsg{}}))
 	if err := s.Start("127.0.0.1:0"); err != nil {
 		t.Fatal(err)

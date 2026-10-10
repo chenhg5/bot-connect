@@ -11,7 +11,7 @@ import (
 )
 
 func TestScheduleTools(t *testing.T) {
-	wm, _ := worker.NewManager(nil, t.TempDir())
+	wm, _ := worker.NewManager(nil, nil, t.TempDir())
 	st, _ := schedule.Open(t.TempDir())
 	r := New(Env{Bot: "b", Workers: wm, Messenger: nop{}, Schedules: st})
 	owner := TurnContext{ConvKey: "c", Caller: identity.User{ID: "me", Role: identity.RoleOwner}}

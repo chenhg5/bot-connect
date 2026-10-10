@@ -29,7 +29,7 @@ func (r *sleepRunner) Run(ctx context.Context, spec config.Worker, sid, prompt s
 
 func TestBusyWorkerQueuesAndResumes(t *testing.T) {
 	dir := t.TempDir()
-	m, err := NewManager([]config.Worker{{Name: "w", Agent: "claudecode", WorkDir: dir}}, t.TempDir())
+	m, err := NewManager([]config.Worker{{Name: "w", Agent: "claudecode", WorkDir: dir}}, nil, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}

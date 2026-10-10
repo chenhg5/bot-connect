@@ -94,7 +94,7 @@ func serve(cfg *config.Config, o serveOpts) error {
 		return err
 	}
 	defer auditLog.Close()
-	workers, err := worker.NewManager(cfg.Workers, cfg.DataDir)
+	workers, err := worker.NewManager(cfg.Workers, cfg.Templates, cfg.DataDir)
 	if err != nil {
 		return err
 	}
@@ -185,7 +185,13 @@ func setupBot(cfg *config.Config, bc config.BotConfig, workers *worker.Manager, 
 		return nil, err
 	}
 	sink = audit.ForBot{Bot: bc.Name, Sink: sink}
-	scope := worker.Scope{AskRoles: map[identity.Role]bool{}}
+	scope := worker.Scope{Bot: bc.Name, AskRoles: map[identity.Role]bool{}}
+	if len(bc.Templates) > 0 {
+		scope.Template = map[string]bool{}
+		for _, t := range bc.Templates {
+			scope.Template[t] = true
+		}
+	}
 	for _, r := range bc.AskRoles {
 		scope.AskRoles[identity.Role(r)] = true
 	}

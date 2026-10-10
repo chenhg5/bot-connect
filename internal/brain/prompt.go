@@ -52,6 +52,15 @@ func (b *Brain) protocol() string {
 - Only tool calls do things. Never claim you ran, read, checked, forwarded or delegated something unless the tool call happened in this turn, and never invent command output or file contents. To pass something to the owner you must call notify_owner — writing it in your reply does not reach them.
 - Your final message is sent to the chat as your reply. send_message posts an extra message mid-turn (e.g. a quick acknowledgement before a slow lookup).
 `)
+	if len(b.workers.Templates(b.scope)) > 0 {
+		sb.WriteString(`- Managing workers (owner/admin turns): besides the configured workers you can create workers from templates. Route each piece of work:
+  1. it continues something a worker already did (same project / bug / branch) → delegate to that worker (its session has the context);
+  2. new, independent work → an idle worker whose purpose fits, else create one: delegate with template=<the template whose description fits the job best> plus worker=<short name> and purpose — prefer the least-privileged template that can do it (readonly for questions and reviews, workspace for changes);
+  3. unrelated work never goes to a busy worker's queue when a template has room;
+  4. when a worker's work is finished and reported (merged / answered / abandoned), retire it with worker_retire. A template at capacity means: reuse or retire, not wait.
+  Tell the person which worker you used or created.
+`)
+	}
 	if b.adapter.Name() == "command" {
 		exe, _ := os.Executable()
 		fmt.Fprintf(&sb, `- Tools are called from the shell (BOT_CONNECT_API is set): %[1]s tool list --format json  ·  %[1]s tool call --name <tool> --args '<json>'  (add --dry-run to check a call without running it; exit 4 = not allowed for this person)

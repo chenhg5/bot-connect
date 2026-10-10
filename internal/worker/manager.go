@@ -59,17 +59,26 @@ type workerState struct {
 	SessionID string        `json:"session_id"`
 	History   []*Task       `json:"history"`
 	LastRun   time.Time     `json:"last_run,omitempty"` // when we last finished writing to the session
+	// Workers created from a template at run time:
+	Template  string         `json:"template,omitempty"`
+	Bot       string         `json:"bot,omitempty"` // bot that created it
+	CreatedBy *identity.User `json:"created_by,omitempty"`
+	CreatedAt time.Time      `json:"created_at,omitempty"`
+	Branch    string         `json:"branch,omitempty"`   // worktree branch
+	RepoDir   string         `json:"repo_dir,omitempty"` // repository the worktree belongs to
 
 	runner  Runner
 	queue   []*Task
 	current *Task
 	cancel  context.CancelFunc
 	wake    chan struct{}
+	stop    chan struct{} // closed when the worker is retired
 }
 
 type Manager struct {
 	mu        sync.Mutex
 	workers   map[string]*workerState
+	templates map[string]config.Template
 	tasks     map[string]*Task
 	seq       int
 	statePath string
@@ -113,9 +122,12 @@ type persisted struct {
 	Workers map[string]*workerState `json:"workers"`
 }
 
-func NewManager(specs []config.Worker, dataDir string) (*Manager, error) {
-	m := &Manager{workers: map[string]*workerState{}, tasks: map[string]*Task{},
+func NewManager(specs []config.Worker, templates []config.Template, dataDir string) (*Manager, error) {
+	m := &Manager{workers: map[string]*workerState{}, tasks: map[string]*Task{}, templates: map[string]config.Template{},
 		statePath: filepath.Join(dataDir, "workers.json"), dataDir: dataDir}
+	for _, t := range templates {
+		m.templates[t.Name] = t
+	}
 	var saved persisted
 	if b, err := os.ReadFile(m.statePath); err == nil {
 		_ = json.Unmarshal(b, &saved)
@@ -128,6 +140,16 @@ func NewManager(specs []config.Worker, dataDir string) (*Manager, error) {
 	}
 	for name, ws := range saved.Workers {
 		if ws.Dynamic && m.workers[name] == nil {
+			// Env (provider credentials) is never persisted: take it from
+			// where the worker came from.
+			if t, ok := m.templates[ws.Template]; ok && ws.Template != "" {
+				ws.Spec.Env = t.Env
+			} else if b := m.workers[ws.Base]; b != nil && ws.Base != "" {
+				ws.Spec.Env = b.Spec.Env
+			} else if ws.Template != "" {
+				slog.Warn("drop worker of removed template", "name", name, "template", ws.Template)
+				continue
+			}
 			if err := m.addLocked(ws.Spec, true); err != nil {
 				slog.Warn("drop saved worker", "name", name, "err", err)
 				continue
@@ -138,6 +160,7 @@ func NewManager(specs []config.Worker, dataDir string) (*Manager, error) {
 				w.SessionID = ws.SessionID
 			}
 			w.Parent, w.Base, w.UserID, w.Owned, w.LastRun = ws.Parent, ws.Base, ws.UserID, ws.Owned, ws.LastRun
+			w.Template, w.Bot, w.CreatedBy, w.CreatedAt, w.Branch, w.RepoDir = ws.Template, ws.Bot, ws.CreatedBy, ws.CreatedAt, ws.Branch, ws.RepoDir
 			w.History = ws.History
 			for _, t := range ws.History {
 				m.tasks[t.ID] = t
@@ -184,7 +207,7 @@ func (m *Manager) addLocked(spec config.Worker, dynamic bool) error {
 		return fmt.Errorf("worker %s: work_dir %s is not a directory", spec.Name, spec.WorkDir)
 	}
 	m.workers[spec.Name] = &workerState{Spec: spec, Dynamic: dynamic, SessionID: spec.SessionID,
-		runner: r, wake: make(chan struct{}, 1)}
+		runner: r, wake: make(chan struct{}, 1), stop: make(chan struct{})}
 	return nil
 }
 
@@ -195,27 +218,7 @@ func (m *Manager) Start(ctx context.Context) {
 		go m.loop(ctx, w)
 	}
 	m.mu.Unlock()
-}
-
-// AddWorker registers a new worker at runtime (persisted).
-func (m *Manager) AddWorker(spec config.Worker) error {
-	spec.WorkDir = config.ExpandHome(spec.WorkDir)
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if spec.Name == "" {
-		return fmt.Errorf("name is required")
-	}
-	if m.workers[spec.Name] != nil {
-		return fmt.Errorf("worker %q already exists", spec.Name)
-	}
-	if err := m.addLocked(spec, true); err != nil {
-		return err
-	}
-	if m.ctx != nil {
-		go m.loop(m.ctx, m.workers[spec.Name])
-	}
-	m.saveLocked()
-	return nil
+	go m.reapLoop(ctx, 5*time.Minute)
 }
 
 // Delegate enqueues an instruction for a worker. ahead is the number of tasks
@@ -322,8 +325,9 @@ func (m *Manager) Overview(scope Scope) string {
 		}
 	}
 	sort.Strings(names)
+	catalog := m.templateCatalogLocked(scope)
 	if len(names) == 0 {
-		return "(no workers)"
+		return "(no workers)\n" + catalog
 	}
 	var b strings.Builder
 	for _, n := range names {
@@ -340,6 +344,16 @@ func (m *Manager) Overview(scope Scope) string {
 			}
 		}
 		fmt.Fprintf(&b, "- %s (%s, %s) — %s\n  status: %s; queued: %d", n, w.Spec.Agent, w.Spec.Access, w.Spec.Description, status, len(w.queue))
+		if w.Template != "" && w.Parent == "" {
+			last := w.LastRun
+			if last.IsZero() {
+				last = w.CreatedAt
+			}
+			fmt.Fprintf(&b, "; from template %s, idle since %s", w.Template, last.Format("01-02 15:04"))
+			if w.Branch != "" {
+				fmt.Fprintf(&b, "; branch %s", w.Branch)
+			}
+		}
 		switch {
 		case !a.Read && w.Spec.PerUser != "" && a.Delegate:
 			b.WriteString("; you get your own private copy of this worker")
@@ -358,7 +372,7 @@ func (m *Manager) Overview(scope Scope) string {
 		}
 		b.WriteString("\n")
 	}
-	return b.String()
+	return b.String() + catalog
 }
 
 // ContextSummary is Overview plus, for workers the caller may read, the
@@ -459,6 +473,8 @@ func (m *Manager) loop(ctx context.Context, w *workerState) {
 			m.mu.Unlock()
 			select {
 			case <-ctx.Done():
+				return
+			case <-w.stop:
 				return
 			case <-w.wake:
 				continue

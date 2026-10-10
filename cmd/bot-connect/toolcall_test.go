@@ -22,7 +22,7 @@ func (nopMsg) SendTo(context.Context, string, string) error { return nil }
 // The path a shell-agent brain uses: `bot-connect tool call` against a live
 // tool server, with exit codes an agent can act on.
 func TestToolCallAgainstToolServer(t *testing.T) {
-	wm, err := worker.NewManager([]config.Worker{{Name: "proj", Agent: "claudecode", WorkDir: t.TempDir()}}, t.TempDir())
+	wm, err := worker.NewManager([]config.Worker{{Name: "proj", Agent: "claudecode", WorkDir: t.TempDir()}}, nil, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}

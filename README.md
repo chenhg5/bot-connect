@@ -93,6 +93,7 @@ as JSON. Follows the [Agent CLI Guide](https://github.com/Johnixr/agent-cli-guid
 bot-connect config  init | validate | show
 bot-connect bot     list | run
 bot-connect worker  list | get
+bot-connect template list
 bot-connect session list | get
 bot-connect task    list | get
 bot-connect schedule list | get | pause | resume | delete
@@ -110,6 +111,17 @@ carries it out (answers, or delegates to a worker). Cron, `@every 2h`, `@daily`,
 one-shot `@once 2h` / `@once 15:00` are supported; minimum interval 5 minutes; a run is skipped while the
 previous one is still being handled. Only owners/admins can create jobs, the creator's role is re-checked at
 every run, and every run is in the audit log. Inspect and control them with `bot-connect schedule …`.
+
+## Managing workers
+
+Besides the workers you configure, the brain can run a pool of its own. You define **templates**
+(`[[templates]]`): what kind of job each suits, the agent, the access level, and where a new worker's
+directory comes from — a fresh empty dir, a new git worktree + branch of a repo, or an existing dir under
+given roots. In chat the brain then routes each piece of work: continuing work goes to the worker that has
+the context; new independent work goes to an idle worker that fits, or to a new one created from the
+best-fitting (least-privileged) template; finished workers are retired (`worker_retire`, or automatically
+after `idle_ttl`). The brain can never raise a worker's permissions — they come from the template — and
+`max_instances` caps how many exist. Only owner/admin turns can create workers.
 
 ## Chat commands
 

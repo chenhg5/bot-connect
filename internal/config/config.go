@@ -20,6 +20,8 @@ type Config struct {
 	Server  Server `toml:"server"`
 	// Named workers (sessions) shared by all bots; one queue per session.
 	Workers []Worker `toml:"workers"`
+	// Templates the brain can create workers from at run time.
+	Templates []Template `toml:"templates"`
 	// Model providers for Claude Code processes (brain and workers), the same
 	// way cc-connect does it: ANTHROPIC_BASE_URL / AUTH_TOKEN / MODEL env.
 	Providers []Provider `toml:"providers"`
@@ -81,7 +83,9 @@ type Bot struct {
 	// Workers this bot may use (empty = all configured workers). A bot can
 	// only reach sessions that one of its workers covers — nothing else on
 	// the machine.
-	Workers            []string `toml:"workers"`
+	Workers []string `toml:"workers"`
+	// Templates this bot may create workers from (empty = all).
+	Templates          []string `toml:"templates"`
 	MaxConcurrentTurns int      `toml:"max_concurrent_turns"`
 	TurnTimeout        Duration `toml:"turn_timeout"`
 	Debounce           Duration `toml:"debounce"`
@@ -219,6 +223,43 @@ type Worker struct {
 	CodexHome string   `toml:"-" json:"-"` // isolated CODEX_HOME (set by the worker manager)
 }
 
+// Template is a kind of worker the brain can create at run time. It fixes
+// what such a worker may do (agent, access level, where its directory comes
+// from); the brain only chooses a name, a purpose and — within the template's
+// roots — a directory or repository.
+type Template struct {
+	Name        string `toml:"name" json:"name,omitempty"`
+	Description string `toml:"description" json:"description,omitempty"` // what jobs it suits (the brain routes on this)
+	Agent       string `toml:"agent" json:"agent,omitempty"`
+	Model       string `toml:"model" json:"model,omitempty"`
+	Provider    string `toml:"provider" json:"provider,omitempty"`
+	Access      string `toml:"access" json:"access,omitempty"` // readonly | workspace | full
+	// Where a new worker's directory comes from:
+	//   worktree — a new git worktree + branch of repo (or of a repo the brain picks under roots)
+	//   dir      — a fresh empty directory under <data_dir>/workspaces/<template>/
+	//   existing — a directory the brain picks, which must be under roots
+	Workspace    string    `toml:"workspace" json:"workspace,omitempty"`
+	Repo         string    `toml:"repo" json:"repo,omitempty"`
+	Roots        []string  `toml:"roots" json:"roots,omitempty"`
+	MaxInstances int       `toml:"max_instances" json:"max_instances,omitempty"` // default 3
+	IdleTTL      *Duration `toml:"idle_ttl" json:"idle_ttl,omitempty"`           // retire after this long idle (default 24h; "0s" = never)
+	TaskTimeout  Duration  `toml:"task_timeout" json:"task_timeout,omitempty"`
+	ReadDirs     []string  `toml:"read_dirs" json:"read_dirs,omitempty"`
+	Tools        []string  `toml:"tools" json:"tools,omitempty"`
+	DenyRead     *[]string `toml:"deny_read" json:"deny_read,omitempty"`
+	Isolate      *bool     `toml:"isolate" json:"isolate,omitempty"`
+
+	Env []string `toml:"-" json:"-"` // resolved from Provider
+}
+
+// TTL is the idle time after which a template worker is retired (0 = never).
+func (t Template) TTL() time.Duration {
+	if t.IdleTTL == nil {
+		return 24 * time.Hour
+	}
+	return t.IdleTTL.Duration
+}
+
 type Duration struct{ time.Duration }
 
 func (d *Duration) UnmarshalText(b []byte) error {
@@ -280,6 +321,31 @@ func (c *Config) normalize() error {
 		w := &c.Workers[i]
 		w.WorkDir = ExpandHome(w.WorkDir)
 		ApplyWorkerDefaults(w)
+	}
+	for i := range c.Templates {
+		t := &c.Templates[i]
+		if t.Agent == "" {
+			t.Agent = "claudecode"
+		}
+		if t.Access == "" {
+			t.Access = "workspace"
+		}
+		if t.Workspace == "" {
+			t.Workspace = "dir"
+		}
+		if t.MaxInstances <= 0 {
+			t.MaxInstances = 3
+		}
+		if t.TaskTimeout.Duration <= 0 {
+			t.TaskTimeout.Duration = 30 * time.Minute
+		}
+		t.Repo = ExpandHome(t.Repo)
+		for j, r := range t.Roots {
+			t.Roots[j] = ExpandHome(r)
+		}
+		for j, r := range t.ReadDirs {
+			t.ReadDirs[j] = ExpandHome(r)
+		}
 	}
 	return nil
 }
@@ -409,6 +475,34 @@ func (c *Config) validate() error {
 		}
 		seen[w.Name] = true
 	}
+	tpls := map[string]bool{}
+	for _, t := range c.Templates {
+		if t.Name == "" || strings.ContainsAny(t.Name, "@#") {
+			return fmt.Errorf("template needs a name without @ or #")
+		}
+		if tpls[t.Name] || seen[t.Name] {
+			return fmt.Errorf("template name %q is already used", t.Name)
+		}
+		tpls[t.Name] = true
+		switch t.Access {
+		case "readonly", "workspace", "full":
+		default:
+			return fmt.Errorf("template %s: access must be readonly, workspace or full", t.Name)
+		}
+		switch t.Workspace {
+		case "dir":
+		case "worktree":
+			if t.Repo == "" && len(t.Roots) == 0 {
+				return fmt.Errorf("template %s: workspace = worktree needs repo or roots", t.Name)
+			}
+		case "existing":
+			if len(t.Roots) == 0 {
+				return fmt.Errorf("template %s: workspace = existing needs roots (where the brain may point it)", t.Name)
+			}
+		default:
+			return fmt.Errorf("template %s: workspace must be worktree, dir or existing", t.Name)
+		}
+	}
 	bots, apps := map[string]bool{}, map[string]string{}
 	for _, b := range c.Bots {
 		if b.Isolation != "shared" && b.Isolation != "per_user" {
@@ -421,6 +515,11 @@ func (c *Config) validate() error {
 		for _, w := range b.Workers {
 			if !seen[w] {
 				return fmt.Errorf("bot %s: unknown worker %q", b.Name, w)
+			}
+		}
+		for _, t := range b.Templates {
+			if !tpls[t] {
+				return fmt.Errorf("bot %s: unknown template %q", b.Name, t)
 			}
 		}
 		// Two bots on one IM app would split its events between them.
@@ -452,6 +551,23 @@ func (c *Config) resolve() error {
 			}
 		}
 		return Provider{}, fmt.Errorf("unknown provider %q", name)
+	}
+	for i := range c.Templates {
+		t := &c.Templates[i]
+		if t.Provider == "" {
+			continue
+		}
+		if t.Agent != "claudecode" {
+			return fmt.Errorf("template %s: provider applies to claudecode only", t.Name)
+		}
+		p, err := find(t.Provider)
+		if err != nil {
+			return fmt.Errorf("template %s: %w", t.Name, err)
+		}
+		t.Env = p.ClaudeEnv()
+		if p.APIKey != "" {
+			t.Env = append(t.Env, "ANTHROPIC_API_KEY="+p.APIKey) // isolated workers run --bare
+		}
 	}
 	for i := range c.Bots {
 		b := &c.Bots[i]

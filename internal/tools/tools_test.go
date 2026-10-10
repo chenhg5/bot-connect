@@ -53,7 +53,7 @@ func setup(t *testing.T, dirSessions bool, botWorkers map[string]bool) (*Registr
 		{Agent: "claudecode", ID: "s-private", Dir: other, Title: "private", Updated: time.Now()},
 	}})
 	wm, err := worker.NewManager([]config.Worker{{Name: "w", Agent: "claudecode", WorkDir: dir,
-		Sessions: []string{"s-listed"}, DirSessions: dirSessions}}, t.TempDir())
+		Sessions: []string{"s-listed"}, DirSessions: dirSessions}}, nil, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}

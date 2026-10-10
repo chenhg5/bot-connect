@@ -104,6 +104,39 @@ description = "bot-connect 项目本身"
 sandbox = "workspace-write"   # codex -s
 # model = "gpt-6-sol"
 
+# ---- Worker templates ----
+# Kinds of workers the brain may create (and retire) on its own, for new pieces
+# of work no configured worker fits. A template fixes everything that matters
+# for safety — agent, access level, where the directory comes from; the brain
+# only picks a name, a purpose and (within roots) a directory or repository.
+# Only owner/admin turns can create workers; they are visible to that bot's
+# owner/admins only. Inspect them with `bot-connect template list` / `worker list`.
+[[templates]]
+name = "scratch"
+description = "一次性的小实验、脚本、调研：在一个全新的空目录里干活"
+agent = "claudecode"
+access = "workspace"          # readonly | workspace | full — see docs/permissions.md
+workspace = "dir"             # fresh empty dir under <data_dir>/workspaces/scratch/<name>
+max_instances = 3             # how many may exist at once
+idle_ttl = "24h"              # retire automatically after this long idle ("0s" = never)
+# task_timeout = "30m"  model = ""  provider = ""  read_dirs = []  tools = []  deny_read = [...]  isolate = false
+
+# [[templates]]
+# name = "feature-dev"
+# description = "在 cc-connect 仓库里开发一个功能或修一个 bug：独立分支，做完提交"
+# agent = "codex"
+# access = "workspace"
+# workspace = "worktree"      # new git worktree + branch bot-connect/<name> of repo
+# repo = "~/code/cc-connect"  # or roots = ["~/code"]: the brain picks a repo under them
+# max_instances = 4
+#
+# [[templates]]
+# name = "reviewer"
+# description = "只读：阅读代码、review、回答关于某个项目的问题"
+# access = "readonly"
+# workspace = "existing"      # the brain points it at an existing dir…
+# roots = ["~/code"]          # …which must be under one of these
+
 # ---- Several bots in one process ----
 # Replace [bot] / [brain] / [feishu] above with one [[bots]] block per bot.
 # Each bot has its own IM app, brain, persona and owners; `workers` limits
@@ -113,6 +146,7 @@ sandbox = "workspace-write"   # codex -s
 # name = "alice bot"
 # owner_name = "alice"
 # workers = ["cc-connect", "bot-connect"]
+# templates = ["scratch"]     # templates it may create workers from (default: all)
 # [bots.brain]
 # agent = "claudecode"
 # system_prompt = "…"

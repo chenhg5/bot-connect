@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chenhg5/bot-connect/internal/config"
 	"github.com/chenhg5/bot-connect/internal/schedule"
 	"github.com/chenhg5/bot-connect/internal/session"
 	"github.com/chenhg5/bot-connect/internal/worker"
@@ -212,6 +211,27 @@ func (e Env) allowedSessions(tc TurnContext, only string) []session.Info {
 	return out
 }
 
+func (e Env) createWorker(tc TurnContext, a map[string]any) (worker.WorkerInfo, error) {
+	wi, err := e.Workers.CreateFromTemplate(s(a, "template"), worker.CreateOptions{Name: s(a, "name"), Purpose: s(a, "purpose"),
+		Dir: s(a, "dir"), Repo: s(a, "repo"), Bot: e.Bot, By: tc.Caller}, e.scope(tc))
+	if err != nil {
+		kind := KindInvalid
+		if strings.Contains(err.Error(), "permission denied") {
+			kind = KindPermission
+		}
+		return wi, &ToolError{kind, err.Error()}
+	}
+	return wi, nil
+}
+
+func created(wi worker.WorkerInfo) string {
+	out := fmt.Sprintf("Created worker %s from template %s (%s, %s) in %s", wi.Name, wi.Template, wi.Agent, wi.Access, wi.Dir)
+	if wi.Branch != "" {
+		out += " on branch " + wi.Branch
+	}
+	return out + "."
+}
+
 // target resolves {worker, session} to the worker that should run the task.
 func (e Env) target(tc TurnContext, a map[string]any) (string, error) {
 	name, id := s(a, "worker"), s(a, "session")
@@ -320,6 +340,10 @@ func New(env Env) *Registry {
 			"If the session is being used locally right now, the task waits until it is idle.",
 		Schema: obj(props{
 			"worker":      str("worker name"),
+			"template":    str("optional (owner/admin): no worker yet — create one from this template first (with worker as its name, purpose, dir/repo), then delegate"),
+			"purpose":     str("with template: what the new worker is for"),
+			"dir":         str("with template (workspace = existing): directory to work in"),
+			"repo":        str("with template (workspace = worktree): repository to branch from"),
 			"session":     str("optional: continue this session (from list_sessions) instead of the worker's current one"),
 			"instruction": str("complete, self-contained instruction"),
 			"urgent":      boolean("put at the front of the queue (never interrupts a running task); default false"),
@@ -327,6 +351,21 @@ func New(env Env) *Registry {
 		Handler: func(ctx context.Context, tc TurnContext, a map[string]any) (string, error) {
 			if s(a, "instruction") == "" {
 				return "", fmt.Errorf("instruction is empty")
+			}
+			prefix := ""
+			if s(a, "template") != "" {
+				if !tc.Caller.Privileged() {
+					return "", &ToolError{KindPermission, "permission denied: only the owner or an admin can create workers"}
+				}
+				args := map[string]any{"template": s(a, "template"), "name": s(a, "worker"), "purpose": firstLine(s(a, "purpose"), s(a, "instruction")),
+					"dir": s(a, "dir"), "repo": s(a, "repo")}
+				wi, err := env.createWorker(tc, args)
+				if err != nil {
+					return "", err
+				}
+				a["worker"], prefix = wi.Name, created(wi)+"\n"
+			} else if s(a, "worker") == "" && s(a, "session") == "" {
+				return "", &ToolError{KindInvalid, "give worker (or session), or template to create a new worker"}
 			}
 			name, err := env.target(tc, a)
 			if err != nil {
@@ -338,9 +377,9 @@ func New(env Env) *Registry {
 				return "", err
 			}
 			if ahead == 0 {
-				return fmt.Sprintf("Task %s created on worker %s; it was idle and has started.", t.ID, t.Worker), nil
+				return prefix + fmt.Sprintf("Task %s created on worker %s; it was idle and has started.", t.ID, t.Worker), nil
 			}
-			return fmt.Sprintf("Task %s created on worker %s; it is busy, %d task(s) ahead — queued.", t.ID, t.Worker, ahead), nil
+			return prefix + fmt.Sprintf("Task %s created on worker %s; it is busy, %d task(s) ahead — queued.", t.ID, t.Worker, ahead), nil
 		},
 	})
 	r.add(Tool{
@@ -381,31 +420,47 @@ func New(env Env) *Registry {
 		},
 	})
 	r.add(Tool{
-		Name:        "create_worker",
-		Description: "Start a NEW agent session on a directory as a worker. Only when the owner asks for a fresh session; to continue existing work use delegate with session=<id>.",
-		OwnerOnly:   true,
+		Name: "worker_create",
+		Description: "Create a new worker from a template (owner/admin only) — for new, independent work no existing worker fits. " +
+			"The template fixes what it may do (agent, access level, where its directory comes from); you choose a name, its purpose and, if the template asks, a directory (existing) or repository (worktree). " +
+			"Templates and their capacity are listed by list_workers. Retire it with worker_retire when its work is done.",
+		OwnerOnly: true,
 		Schema: obj(props{
-			"name":        str("short name"),
-			"agent":       map[string]any{"type": "string", "enum": []string{"claudecode", "codex"}},
-			"work_dir":    str("absolute path"),
-			"description": str("what this worker is responsible for"),
-		}, "name", "agent", "work_dir", "description"),
+			"template": str("template name"),
+			"name":     str("short name, letters/digits/-/_ (default <template>-<n>)"),
+			"purpose":  str("what this worker is for, e.g. \"fix login bug in tapnow-web\" — you route later tasks on this"),
+			"dir":      str("workspace = existing: the directory to work in (under the template's roots)"),
+			"repo":     str("workspace = worktree: the git repository to branch from (default: the template's repo)"),
+		}, "template", "purpose"),
 		Handler: func(ctx context.Context, tc TurnContext, a map[string]any) (string, error) {
-			dir := config.ExpandHome(s(a, "work_dir"))
-			inside := false
-			for _, root := range workers.Roots(env.scope(tc)) {
-				if p, ok := workers.Policy(root, env.scope(tc)); ok && (sameOrUnder(dir, p.Dir)) {
-					inside = true
-				}
-			}
-			if !inside {
-				return "", fmt.Errorf("%s is not inside any of this bot's worker directories", dir)
-			}
-			err := workers.AddWorker(config.Worker{Name: s(a, "name"), Agent: s(a, "agent"), WorkDir: dir, Description: s(a, "description")})
+			wi, err := env.createWorker(tc, a)
 			if err != nil {
 				return "", err
 			}
-			return "Created worker " + s(a, "name"), nil
+			return created(wi), nil
+		},
+	})
+	r.add(Tool{
+		Name:        "worker_update",
+		Description: "Change the purpose of a worker you created from a template (its permissions come from the template and can't change).",
+		OwnerOnly:   true,
+		Schema:      obj(props{"name": str("worker name"), "purpose": str("new purpose")}, "name", "purpose"),
+		Handler: func(ctx context.Context, tc TurnContext, a map[string]any) (string, error) {
+			if err := workers.UpdatePurpose(s(a, "name"), s(a, "purpose"), env.scope(tc)); err != nil {
+				return "", &ToolError{KindNotFound, err.Error()}
+			}
+			return "Updated " + s(a, "name"), nil
+		},
+	})
+	r.add(Tool{
+		Name: "worker_retire",
+		Description: "Retire a worker created from a template once its work is done (configured workers can't be retired). " +
+			"A busy worker, or a worktree with uncommitted changes, needs force=true. Its directory is kept (a clean worktree is removed; its branch stays). Idle workers are also retired automatically after the template's idle_ttl.",
+		OwnerOnly: true,
+		Schema:    obj(props{"name": str("worker name"), "force": boolean("cancel its tasks / keep uncommitted changes as they are; default false")}, "name"),
+		Handler: func(ctx context.Context, tc TurnContext, a map[string]any) (string, error) {
+			force, _ := a["force"].(bool)
+			return workers.Retire(s(a, "name"), force, env.scope(tc))
 		},
 	})
 	if env.Schedules != nil {

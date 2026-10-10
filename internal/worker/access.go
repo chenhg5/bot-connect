@@ -7,6 +7,8 @@ import (
 // Scope is one caller's view of the worker pool through one bot.
 type Scope struct {
 	Names    map[string]bool        // the bot's workers (nil = all); instances / sub-workers follow their base
+	Bot      string                 // the bot looking (workers it created from templates are its own)
+	Template map[string]bool        // templates the bot may create workers from (nil = all)
 	Caller   identity.User          // who is asking (role decides the rest)
 	AskRoles map[identity.Role]bool // roles that may hand work to read-only shared workers
 }
@@ -27,6 +29,12 @@ type Access struct {
 //	shared, per_user      all          all          delegate → own copy     —
 //	instance of user U    all          see+read     U only: all            —
 func (s Scope) access(w *workerState) Access {
+	if w.Template != "" { // created by a brain from a template: its bot's owner/admins only
+		if (s.Template != nil && !s.Template[w.Template]) || (s.Bot != "" && w.Bot != "" && w.Bot != s.Bot) || !s.Caller.Role.Privileged() {
+			return Access{}
+		}
+		return Access{See: true, Read: true, Delegate: true}
+	}
 	if s.Names != nil && !s.Names[w.base()] {
 		return Access{}
 	}

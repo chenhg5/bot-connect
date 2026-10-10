@@ -52,7 +52,7 @@ func (b *fakeBrain) HandleTurn(ctx context.Context, t Turn) (string, error) {
 }
 
 func newTestHub(t *testing.T, maxConc int, hold time.Duration) (*Hub, *fakeBrain) {
-	wm, err := worker.NewManager(nil, t.TempDir())
+	wm, err := worker.NewManager(nil, nil, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
