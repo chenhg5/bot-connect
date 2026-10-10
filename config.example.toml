@@ -104,6 +104,49 @@ description = "bot-connect 项目本身"
 sandbox = "workspace-write"   # codex -s
 # model = "gpt-6-sol"
 
+# capabilities = ["repo:cc-connect:write"]  # what this agent can reach (default: its dir); decides when no person is needed
+# skills = ["Go", "IM 接入"]
+
+# ---- People (human workers) ----
+# The bot hands work to people only when there is a reason an agent can't do
+# it (an approval, a decision, a real-world action, a capability no agent
+# has…), reaches them along their contact routes within their hours, and
+# follows up within their nudge limits.
+# [[people]]
+# id = "wangwu"
+# name = "王五"
+# description = "数据分析师"
+# skills = ["埋点", "数据分析"]
+# identities = ["feishu:ou_xxx"]          # recognises their messages to the bot
+# consent = true                         # agreed to take work from the bot (else: only reached, never assigned)
+# timezone = "Asia/Shanghai"
+# work_hours = [{ start = "10:00", end = "19:00", days = [1, 2, 3, 4, 5] }]
+# quiet_hours = [{ start = "12:00", end = "13:30" }]
+# max_nudges_per_day = 2
+# min_nudge_interval = "3h"
+# authority = [{ action = "deploy:prod" }]  # what they may approve (also via [org] roles + policies)
+# [[people.contact]]
+# channel = "feishu_dm"
+# address = "ou_xxx"
+
+# ---- The company: approval rules and standing roles ----
+# Projects are created in chat ("新开一个项目…"); the company is the root
+# project, so rules and roles here apply to every project unless one
+# overrides them.
+# [org]
+# title = "公司"
+# [[org.policies]]
+# action = "deploy:prod"
+# approvers = ["oncall"]                 # role names (resolved to whoever holds them now) or worker ids
+# [[org.policies]]
+# action = "merge:main"
+# scope = "repo:tapnow"
+# approvers = ["code_owner"]
+# [[org.roles]]
+# worker = "lisi"
+# role = "code_owner"
+# duties = ["媒体服务"]
+
 # ---- Worker templates ----
 # Kinds of workers the brain may create (and retire) on its own, for new pieces
 # of work no configured worker fits. A template fixes everything that matters

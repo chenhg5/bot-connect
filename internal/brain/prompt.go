@@ -55,9 +55,11 @@ func (b *Brain) protocol() string {
 - You are also the owner's PM across projects. Each privileged turn carries a briefing: the agenda bot-connect computed (Now / Today / Watch) and every active project's card. Work from it — don't re-derive what it already says:
   - Handle every Now entry this turn with a tool, then record what you did with resolve (done / acted / deferred / handed_to_owner).
   - Tracked work (an owner, a deadline, follow-up) goes through plan_item / delegate; quick questions to an agent session go through agent_task.
-  - Agents first. Ask a person only with a reason (approval, decision, physical action, relationship, judgment, knowledge, or a capability no agent has), and hand over only the step that needs them — self-contained and minimal. Use find_people to choose (project roles first; respect exclusions). Before risky actions (merge, deploy, publishing, spending) use authorize.
+  - Agents first. Ask a person only with a reason (approval, decision, physical action, relationship, judgment, knowledge, or a capability no agent has), and hand over only the step that needs them — self-contained and minimal. The briefing lists every worker (id「name」, duties, capabilities, consent); tools accept an id or a name. Use find_people to choose (project roles first; respect exclusions). Set people's roles with project_update as soon as the owner tells you who does what. Before risky actions (merge, deploy, publishing, spending) use authorize.
   - New work with a deadline: judge feasibility from the briefing (progress, load, pace). If it can't be done as asked, say so now with 2–3 options and your recommendation instead of accepting.
-  - [系统事件·项目] messages: a delivery → check every acceptance criterion, then review verify or revise (say exactly what's missing) and tell the requester; a decline / expiry / failure → re-plan (another worker, smaller scope) or tell the requester; a question → answer it if you can, else ask the requester; a risk → tell the requester what, why, the options and your recommendation.
+  - Dates: pass them to tools in the person's own words (due="下周三", "周五 18:00", "明天下午", "月底", "17号") — bot-connect resolves them; don't convert them yourself. When you mention a date, use the one the tool result or the calendar line shows.
+  - A counter-proposal (a new deadline from the worker) is the requester's decision: tell them the impact (milestones, items waiting on it) with your recommendation, and accept it (review accept_counter) only after they agree — unless the owner's standing instructions say you may.
+  - [系统事件·项目] messages: a delivery → check every acceptance criterion against the evidence, then review verify or revise (say exactly what's missing) and tell the requester. Verify only what you actually checked: if you can't open or inspect the evidence, say so and ask the requester to confirm (or have an agent check it) instead of verifying on the worker's word; a decline / expiry / failure → re-plan (another worker, smaller scope) or tell the requester; a question → answer it if you can, else ask the requester; a risk → tell the requester what, why, the options and your recommendation.
   - Never let a deadline pass silently. If a wake-up needs no message to anyone, reply with exactly NO_REPLY.
 - Your final message is sent to the chat as your reply. send_message posts an extra message mid-turn (e.g. a quick acknowledgement before a slow lookup).
 `)
@@ -95,7 +97,7 @@ func (b *Brain) turnPrompt(t hub.Turn, inlineSystem, inlineHistory bool) string 
 		chat = "group chat"
 	}
 	zone, _ := time.Now().Zone()
-	fmt.Fprintf(&sb, "time: %s (%s, %s)\nchannel: %s %s\nbot owner: %s\n", time.Now().Format("2006-01-02 15:04 Mon"), time.Local.String(), zone, t.Conv.Platform, chat, b.ownerName)
+	fmt.Fprintf(&sb, "time: %s (%s, %s)\n%s\nchannel: %s %s\nbot owner: %s\n", time.Now().Format("2006-01-02 15:04 Mon"), time.Local.String(), zone, Calendar(time.Now()), t.Conv.Platform, chat, b.ownerName)
 	sb.WriteString("senders this turn:\n")
 	for _, u := range senders(t.Items) {
 		fmt.Fprintf(&sb, "- %s (id %s) — %s\n", u.Display(), u.ID, u.Role)
@@ -188,4 +190,30 @@ func clip(s string, n int) string {
 		return s
 	}
 	return string(r[:n]) + "…"
+}
+
+// Calendar is the next two weeks, grouped by this / next / the week after,
+// so a brain reads relative dates instead of computing them.
+func Calendar(now time.Time) string {
+	wd := []string{"日", "一", "二", "三", "四", "五", "六"}
+	var b strings.Builder
+	fmt.Fprintf(&b, "calendar: 今天 %s 周%s", now.Format("01-02"), wd[now.Weekday()])
+	label := "本周"
+	for i := 1; i <= 15; i++ {
+		d := now.AddDate(0, 0, i)
+		if d.Weekday() == time.Monday {
+			if label == "本周" {
+				label = "下周"
+			} else if label == "下周" {
+				label = "下下周"
+			} else {
+				break
+			}
+			b.WriteString("｜" + label)
+		} else if i == 1 {
+			b.WriteString("｜" + label)
+		}
+		fmt.Fprintf(&b, " %s%s", wd[d.Weekday()], d.Format("01-02"))
+	}
+	return b.String()
 }

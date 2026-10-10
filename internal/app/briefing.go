@@ -13,6 +13,7 @@ import (
 	"github.com/chenhg5/bot-connect/internal/domain/planning"
 	"github.com/chenhg5/bot-connect/internal/domain/portfolio"
 	. "github.com/chenhg5/bot-connect/internal/domain/shared"
+	"github.com/chenhg5/bot-connect/internal/domain/workforce"
 	"github.com/chenhg5/bot-connect/internal/domain/world"
 )
 
@@ -76,6 +77,7 @@ func (a *App) Briefing(ctx context.Context, o BriefingOptions) string {
 	for _, id := range ids {
 		b.WriteString("\n" + ProjectCard(w, w.Projects[id], insight.ProjectProgress(w, id, c.Forecast, attention.RiskCount(sigs, id)), o.Focus == id, o.MaxItems))
 	}
+	b.WriteString("\n" + Roster(w))
 	if org, ok := w.Projects[OrgProject]; ok {
 		if roles := org.ActiveMembers(w.Now); len(roles) > 0 {
 			b.WriteString("\n公司层面的角色：")
@@ -99,6 +101,64 @@ func (a *App) Briefing(ctx context.Context, o BriefingOptions) string {
 		}
 	}
 	return strings.TrimSpace(b.String())
+}
+
+// Roster lists the workers the bot can hand work to, with their ids, so
+// people can be named by name or id.
+func Roster(w *world.World) string {
+	var ids []WorkerID
+	for id := range w.Workers {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool {
+		ai, aj := w.Workers[ids[i]].Kind.Agentic(), w.Workers[ids[j]].Kind.Agentic()
+		if ai != aj {
+			return ai // agents first
+		}
+		return ids[i] < ids[j]
+	})
+	var b strings.Builder
+	b.WriteString("人力（worker id「名字」：职责 / 能力；状态）：\n")
+	for _, id := range ids {
+		wk := w.Workers[id]
+		kind := "agent"
+		if !wk.Kind.Agentic() {
+			kind = "人"
+		}
+		fmt.Fprintf(&b, "- %s「%s」%s", id, wk.Name, kind)
+		var parts []string
+		if wk.Description != "" {
+			parts = append(parts, wk.Description)
+		}
+		if len(wk.Skills) > 0 {
+			parts = append(parts, "技能 "+strings.Join(wk.Skills, "、"))
+		}
+		if len(wk.Capability) > 0 {
+			var cs []string
+			for _, c := range wk.Capability {
+				cs = append(cs, c.String())
+			}
+			parts = append(parts, "能力 "+strings.Join(cs, "、"))
+		}
+		if len(wk.Authority) > 0 {
+			var as []string
+			for _, a := range wk.Authority {
+				as = append(as, a.Action)
+			}
+			parts = append(parts, "可批准 "+strings.Join(as, "、"))
+		}
+		if wk.Kind == workforce.Human && id != Owner && !wk.Consent.Given {
+			parts = append(parts, "未同意接 bot 派的活（只能联系，不能派活）")
+		}
+		if len(parts) > 0 {
+			b.WriteString("：" + strings.Join(parts, "；"))
+		}
+		if s := w.State(id).Summary(w.Now); s != "unknown" {
+			b.WriteString("；" + s)
+		}
+		b.WriteString("\n")
+	}
+	return b.String()
 }
 
 func roleText(m portfolio.Membership) string {
@@ -271,6 +331,9 @@ func ParseWhen(s string, now time.Time) (*time.Time, error) {
 	if s == "" {
 		return nil, nil
 	}
+	if t, ok := parseChinese(s, now); ok {
+		return &t, nil
+	}
 	if d, err := parseDuration(s, 24*time.Hour); err == nil {
 		t := now.Add(d)
 		return &t, nil
@@ -298,7 +361,7 @@ func ParseWhen(s string, now time.Time) (*time.Time, error) {
 		}
 		return &at, nil
 	}
-	return nil, Invalid("can't read time %q (use 2026-10-17 18:00, 10-17 18:00, 18:00, or 2h / 3d)", s)
+	return nil, Invalid("can't read time %q (use 下周三 / 周五 18:00 / 明天下午 / 月底 / 17号, 2026-10-17 18:00, 10-17 18:00, 18:00, or 2h / 3d)", s)
 }
 
 // ParseEffort reads an estimate of effort: "2h", "30m", "1d" (= 8 working hours).
@@ -322,4 +385,112 @@ func parseDuration(s string, day time.Duration) (time.Duration, error) {
 		return 0, Invalid("bad duration %q", s)
 	}
 	return d, nil
+}
+
+var cnWeekday = map[string]time.Weekday{"一": time.Monday, "二": time.Tuesday, "三": time.Wednesday, "四": time.Thursday,
+	"五": time.Friday, "六": time.Saturday, "日": time.Sunday, "天": time.Sunday}
+
+// parseChinese reads relative dates people say: 今天 / 明天 / 后天 / 大后天,
+// 周三 / 星期三 / 礼拜三 (the next one), 本周三, 下周三, 下下周三, 月底, 17号,
+// optionally followed by a time (18:00, 下午, 上午, 中午, 晚上, 下班前).
+// A date without a time means the end of that working day (18:00).
+func parseChinese(s string, now time.Time) (time.Time, bool) {
+	s = strings.TrimSpace(strings.TrimSuffix(strings.TrimSuffix(s, "前"), "之前"))
+	loc := now.Location()
+	day := func(t time.Time) time.Time { return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, loc) }
+	today := day(now)
+	var date time.Time
+	rest := ""
+	matched := false
+	for _, p := range []struct {
+		word string
+		days int
+	}{{"大后天", 3}, {"后天", 2}, {"明天", 1}, {"今天", 0}, {"今晚", 0}} {
+		if r, ok := strings.CutPrefix(s, p.word); ok {
+			date, rest, matched = today.AddDate(0, 0, p.days), r, true
+			if p.word == "今晚" {
+				rest = "晚上" + r
+			}
+			break
+		}
+	}
+	if !matched {
+		weeks := -1 // -1: the next occurrence
+		x := s
+		switch {
+		case strings.HasPrefix(x, "下下周"), strings.HasPrefix(x, "下下星期"):
+			weeks, x = 2, strings.TrimPrefix(strings.TrimPrefix(x, "下下周"), "下下星期")
+		case strings.HasPrefix(x, "下周"), strings.HasPrefix(x, "下星期"), strings.HasPrefix(x, "下礼拜"):
+			weeks, x = 1, strings.TrimPrefix(strings.TrimPrefix(strings.TrimPrefix(x, "下周"), "下星期"), "下礼拜")
+		case strings.HasPrefix(x, "本周"), strings.HasPrefix(x, "这周"), strings.HasPrefix(x, "这个星期"):
+			weeks, x = 0, strings.TrimPrefix(strings.TrimPrefix(strings.TrimPrefix(x, "本周"), "这周"), "这个星期")
+		default:
+			for _, p := range []string{"周", "星期", "礼拜"} {
+				if r, ok := strings.CutPrefix(x, p); ok {
+					x = r
+					break
+				}
+			}
+			if x == s {
+				x = ""
+			}
+		}
+		if x != "" {
+			r := []rune(x)
+			if wd, ok := cnWeekday[string(r[0])]; ok {
+				rest = string(r[1:])
+				// Monday of this week (weeks start on Monday)
+				offset := (int(today.Weekday()) + 6) % 7
+				monday := today.AddDate(0, 0, -offset)
+				target := (int(wd) + 6) % 7
+				if weeks < 0 {
+					date = monday.AddDate(0, 0, target)
+					if !date.After(today) {
+						date = date.AddDate(0, 0, 7)
+					}
+				} else {
+					date = monday.AddDate(0, 0, 7*weeks+target)
+				}
+				matched = true
+			}
+		}
+	}
+	if !matched {
+		if r, ok := strings.CutPrefix(s, "月底"); ok {
+			date, rest, matched = time.Date(today.Year(), today.Month()+1, 0, 0, 0, 0, 0, loc), r, true
+		} else if i := strings.IndexAny(s, "号日"); i > 0 {
+			var d int
+			if _, err := fmt.Sscanf(s[:i], "%d", &d); err == nil && d >= 1 && d <= 31 {
+				date = time.Date(today.Year(), today.Month(), d, 0, 0, 0, 0, loc)
+				if date.Before(today) {
+					date = date.AddDate(0, 1, 0)
+				}
+				rest, matched = s[i+len("号"):], true
+			}
+		}
+	}
+	if !matched {
+		return time.Time{}, false
+	}
+	h, m := 18, 0
+	rest = strings.TrimSpace(rest)
+	switch {
+	case rest == "" || strings.HasPrefix(rest, "下班"):
+	case strings.HasPrefix(rest, "上午"), strings.HasPrefix(rest, "中午"):
+		h = 12
+	case strings.HasPrefix(rest, "下午"):
+		h = 18
+	case strings.HasPrefix(rest, "晚上"):
+		h = 21
+	default:
+		var hh, mm int
+		if n, _ := fmt.Sscanf(rest, "%d:%d", &hh, &mm); n == 2 && hh <= 24 && mm < 60 {
+			h, m = hh, mm
+		} else if n, _ := fmt.Sscanf(rest, "%d点", &hh); n == 1 && hh <= 24 {
+			h = hh
+		} else {
+			return time.Time{}, false
+		}
+	}
+	return date.Add(time.Duration(h)*time.Hour + time.Duration(m)*time.Minute), true
 }

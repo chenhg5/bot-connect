@@ -156,7 +156,7 @@ func addPM(r *Registry, env Env) {
 			"parent":     str("parent item id (sub-item)"),
 			"milestone":  boolean("this is a milestone"),
 			"done":       arr("acceptance criteria, one per entry"),
-			"due":        str("deadline: 2026-10-17 18:00 | 10-17 18:00 | 18:00 | 2h | 3d"),
+			"due":        str("deadline in the person's words — 下周三 / 周五 18:00 / 明天下午 / 月底 / 17号 — or 2026-10-17 18:00 / 2h / 3d; bot-connect resolves it"),
 			"estimate":   str("effort: 30m | 4h | 1d (= 8h)"),
 			"priority":   enum("default: the project's", "P0", "P1", "P2", "P3"),
 			"needs":      arr("kind:detail, e.g. capability:repo:tapnow:write, approval:deploy:prod"),
@@ -171,7 +171,11 @@ func addPM(r *Registry, env Env) {
 			if err != nil {
 				return "", domainErr(err)
 			}
-			return "Planned " + string(it.ID) + "「" + it.Title + "」in " + string(it.Project), nil
+			out := "Planned " + string(it.ID) + "「" + it.Title + "」in " + string(it.Project)
+			if it.Due != nil {
+				out += ", due " + it.Due.Format("2006-01-02 15:04 Mon")
+			}
+			return out, nil
 		},
 	})
 	r.add(Tool{
@@ -181,7 +185,7 @@ func addPM(r *Registry, env Env) {
 			"kind=approval|decision|clarification|review asks for an answer (decision needs options); work is delivered and then verified with review. Keep the brief self-contained and minimal (an external worker sees only it).",
 		OwnerOnly: true,
 		Schema: obj(props{
-			"worker":   str("worker id (from find_people / brief); \"owner\" for the owner"),
+			"worker":   str("worker id or name (roster in the brief); \"owner\" for the owner"),
 			"item":     str("existing item id"),
 			"project":  str("with goal: project to create the item in (default: the company)"),
 			"goal":     str("what to do and why, self-contained"),
@@ -219,7 +223,11 @@ func addPM(r *Registry, env Env) {
 			if err != nil {
 				return "", domainErr(err)
 			}
-			as, err := pm.Delegate(ctx, by, app.DelegateSpec{Item: itemID, Worker: WorkerID(s(a, "worker")), Kind: delegation.AskKind(s(a, "kind")),
+			wid, err := pm.ResolveWorker(s(a, "worker"))
+			if err != nil {
+				return "", domainErr(err)
+			}
+			as, err := pm.Delegate(ctx, by, app.DelegateSpec{Item: itemID, Worker: wid, Kind: delegation.AskKind(s(a, "kind")),
 				Why: NeedKind(s(a, "why")), Options: strs(a, "options"), Conv: tc.ConvKey,
 				Brief: delegation.Brief{Goal: s(a, "goal"), Context: s(a, "context"), Done: strs(a, "done"), Evidence: s(a, "evidence"), Due: due, Estimate: est}})
 			if err != nil {
@@ -228,7 +236,11 @@ func addPM(r *Registry, env Env) {
 				}
 				return "", domainErr(err)
 			}
-			return fmt.Sprintf("%s → %s（%s，%s）on item %s; the result comes back here.", as.ID, as.Worker, as.Kind, as.Status, as.Item), nil
+			dueText := ""
+			if as.Brief.Due != nil {
+				dueText = ", due " + as.Brief.Due.Format("2006-01-02 15:04 Mon")
+			}
+			return fmt.Sprintf("%s → %s（%s，status %s — not accepted yet unless it says accepted）on item %s%s; the result comes back here.", as.ID, as.Worker, as.Kind, as.Status, as.Item, dueText), nil
 		},
 	})
 	r.add(Tool{
@@ -388,6 +400,15 @@ func addPM(r *Registry, env Env) {
 			if err != nil {
 				return "", domainErr(err)
 			}
+			for _, k := range []string{"member_worker", "end_member_worker"} {
+				if v := s(a, k); v != "" {
+					id, err := pm.ResolveWorker(v)
+					if err != nil {
+						return "", domainErr(err)
+					}
+					a[k] = string(id)
+				}
+			}
 			p, err := pm.ChangeProject(ctx, by, ProjectID(s(a, "project")), func(p *portfolio.Project, now time.Time) ([]Event, error) {
 				var evs []Event
 				add := func(e []Event, err error) error { evs = append(evs, e...); return err }
@@ -476,7 +497,11 @@ func addPM(r *Registry, env Env) {
 		Schema: obj(props{"worker": str("worker id"), "dim": enum("", "presence", "receptiveness", "load", "context"),
 			"value": str("e.g. away, low"), "detail": str("evidence, briefly")}, "worker", "dim", "value"),
 		Handler: func(ctx context.Context, tc TurnContext, a map[string]any) (string, error) {
-			err := pm.NoteWorker(ctx, actorOf(pm, tc), WorkerID(s(a, "worker")), workforce.Fact{Dim: workforce.Dim(s(a, "dim")), Value: s(a, "value"), Detail: s(a, "detail")})
+			wid, err := pm.ResolveWorker(s(a, "worker"))
+			if err != nil {
+				return "", domainErr(err)
+			}
+			err = pm.NoteWorker(ctx, actorOf(pm, tc), wid, workforce.Fact{Dim: workforce.Dim(s(a, "dim")), Value: s(a, "value"), Detail: s(a, "detail")})
 			if err != nil {
 				return "", domainErr(err)
 			}

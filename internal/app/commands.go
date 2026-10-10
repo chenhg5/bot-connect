@@ -55,6 +55,38 @@ func (a *App) WorkerFor(ids ...string) (WorkerID, bool) {
 	return found, found != ""
 }
 
+// ResolveWorker finds a worker by id or by name (exact, then unique partial).
+func (a *App) ResolveWorker(s string) (WorkerID, error) {
+	s = strings.TrimSpace(s)
+	if s == "me" || s == "主人" || s == "我" {
+		return Owner, nil
+	}
+	var exact, partial []WorkerID
+	a.Store.Read(func(st *State) {
+		if _, ok := st.Workers[WorkerID(s)]; ok {
+			exact = []WorkerID{WorkerID(s)}
+			return
+		}
+		for id, w := range st.Workers {
+			switch {
+			case strings.EqualFold(w.Name, s) || strings.EqualFold(string(id), s):
+				exact = append(exact, id)
+			case s != "" && (strings.Contains(w.Name, s) || strings.Contains(s, w.Name) && w.Name != ""):
+				partial = append(partial, id)
+			}
+		}
+	})
+	switch {
+	case len(exact) == 1:
+		return exact[0], nil
+	case len(exact) == 0 && len(partial) == 1:
+		return partial[0], nil
+	case len(exact)+len(partial) > 1:
+		return "", Invalid("%q matches several workers; use the id", s)
+	}
+	return "", NotFound("no worker %q (see the roster in the brief)", s)
+}
+
 // NoteWorker records a fact about a worker: declared when the worker says it
 // about themselves, otherwise inferred (expires within a day).
 func (a *App) NoteWorker(ctx context.Context, by Actor, id WorkerID, f workforce.Fact) error {
