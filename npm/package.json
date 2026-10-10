@@ -4,7 +4,7 @@
   "description": "One IM bot per person: chat with your bot in Feishu; it answers or hands work to Claude Code / Codex sessions and reports back",
   "keywords": ["claude-code", "codex", "ai-agent", "feishu", "lark", "chatbot", "coding-agent"],
   "homepage": "https://github.com/chenhg5/bot-connect",
-  "repository": { "type": "git", "url": "https://github.com/chenhg5/bot-connect.git" },
+  "repository": { "type": "git", "url": "git+https://github.com/chenhg5/bot-connect.git" },
   "license": "MIT",
   "author": "chenhg5",
   "os": ["darwin", "linux", "win32"],
