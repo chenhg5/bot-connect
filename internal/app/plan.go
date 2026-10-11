@@ -70,6 +70,7 @@ type PlanView struct {
 	Feasibility portfolio.Feasibility
 	Assumptions []string
 	StopIf      []string
+	Questions   []string
 	Style       string
 	Nodes       []NodeView
 }
@@ -104,7 +105,8 @@ type PlanDraft struct {
 	Project ProjectID
 	Spec    portfolio.PlanSpec
 	Nodes   []NodeSpec
-	Replace bool // open nodes not listed are dropped
+	Replace bool      // open nodes not listed are dropped
+	Since   time.Time // when the message this turn handles came in (exploring: a round tried before it needs recording first)
 }
 
 // PlanResult says what drafting did and what the plan looks like now.
@@ -162,6 +164,10 @@ func (a *App) DraftPlan(ctx context.Context, by Actor, d PlanDraft) (PlanResult,
 			return nil, Conflict("project %s is %s", p.ID, p.Status)
 		}
 		var evs []Event
+		if p.Plan.Kind == portfolio.KindExplore && p.Plan.Stage == portfolio.PlanActive && !d.Since.IsZero() && roundTried(s, p, d.Since) {
+			return nil, Conflict("this round's probes went out and nothing was recorded since: first plan learn (what the principal said about what they saw, " +
+				"and continue / pivot / stop / converge), then draft the next round")
+		}
 		ids := make([]ItemID, len(d.Nodes))
 		for i, n := range d.Nodes {
 			switch {
@@ -195,7 +201,8 @@ func (a *App) DraftPlan(ctx context.Context, by Actor, d PlanDraft) (PlanResult,
 				}
 				deps = append(deps, dep)
 			}
-			node := planning.Node{Executor: execs[n.Executor], Why: n.Why, Output: n.Output, Brief: n.Brief, Compounding: n.Compounding, Routine: n.Routine}
+			node := planning.Node{Executor: execs[n.Executor], Why: n.Why, Output: n.Output, Brief: n.Brief, Compounding: n.Compounding, Routine: n.Routine,
+				Round: max(p.Plan.Round, 1)}
 			if cur, ok := s.Items[id]; ok {
 				if !cur.Open() {
 					continue // done and dropped nodes stay as they are
@@ -271,6 +278,10 @@ func (a *App) DraftPlan(ctx context.Context, by Actor, d PlanDraft) (PlanResult,
 		evs = append(evs, p.Draft(d.Spec, now, by)...)
 		s.Projects[p.ID] = p
 		res.Analysis = analyze(s, p.ID, now)
+		if len(planning.Nodes(s.Items, p.ID)) == 0 && p.Plan.Stage != portfolio.PlanDone {
+			return nil, Invalid("the plan has no nodes, so nothing will happen: pass nodes — each thing to do now, with executor and output " +
+				"(for exploring: this round's probes, e.g. {ref:a, title:方向 A 的原型, executor:<agent>, output:draft})")
+		}
 		if errs := res.Analysis.Errors(); len(errs) > 0 {
 			var b strings.Builder
 			b.WriteString("the plan has problems; nothing was saved:")
@@ -577,7 +588,7 @@ func (a *App) planView(ctx context.Context, pid ProjectID) PlanView {
 	w := a.World(ctx)
 	p := w.Projects[pid]
 	v := PlanView{Project: p.Title, Objective: p.Objective.Text, Kind: p.Plan.Kind, Feasibility: p.Plan.Feasibility,
-		Assumptions: p.Plan.Assumptions, StopIf: p.Plan.StopIf, Style: a.Style.Describe()}
+		Assumptions: p.Plan.Assumptions, StopIf: p.Plan.StopIf, Questions: p.Plan.Questions, Style: a.Style.Describe()}
 	nodes := planning.Nodes(w.Items, pid)
 	ids := make([]ItemID, 0, len(nodes))
 	for id := range nodes {
@@ -616,6 +627,9 @@ func (a *App) DescribePlan(pid ProjectID) string {
 	})
 	var b strings.Builder
 	stage := map[portfolio.Stage]string{portfolio.PlanDraft: "草案", portfolio.PlanProposed: "待确认", portfolio.PlanActive: "执行中", portfolio.PlanDone: "已完成"}[p.Plan.Stage]
+	if p.Plan.Kind == portfolio.KindExplore && p.Plan.Stage == portfolio.PlanActive {
+		stage = "探索中"
+	}
 	fmt.Fprintf(&b, "%s「%s」计划 rev%d：%s（%s）\n", p.ID, p.Title, p.Plan.Revision, firstNonEmpty(stage, "无"), p.Plan.Kind)
 	if f := p.Plan.Feasibility; f.Verdict != "" {
 		fmt.Fprintf(&b, "可行性：%s %s\n", f.Verdict, f.Note)
@@ -625,6 +639,22 @@ func (a *App) DescribePlan(pid ProjectID) string {
 	}
 	if len(p.Plan.StopIf) > 0 {
 		b.WriteString("止损：" + strings.Join(p.Plan.StopIf, "；") + "\n")
+	}
+	if p.Plan.Kind == portfolio.KindExplore {
+		fmt.Fprintf(&b, "探索第 %d 轮", p.Plan.Round)
+		if !p.Plan.LastReview.IsZero() {
+			b.WriteString("，上次和委托人对齐 " + p.Plan.LastReview.Format("01-02 15:04"))
+		}
+		if p.Timebox.Until != nil {
+			b.WriteString("，时间盒到 " + p.Timebox.Until.Format("01-02"))
+		}
+		b.WriteString("\n")
+		if len(p.Plan.Questions) > 0 {
+			b.WriteString("还没答案的问题：" + strings.Join(p.Plan.Questions, "；") + "\n")
+		}
+		for _, l := range p.Plan.Learned {
+			fmt.Fprintf(&b, "学到（第 %d 轮，%s）：%s\n", l.Round, firstNonEmpty(l.Choice, "continue"), l.Text)
+		}
 	}
 	for i, layer := range an.Layers {
 		fmt.Fprintf(&b, "第 %d 批（可并行）：\n", i+1)
@@ -714,4 +744,76 @@ func (a *App) StartedNodes(pid ProjectID) []string {
 	})
 	sort.Strings(out)
 	return out
+}
+
+// LearningChecker looks at what a round of exploration concluded against
+// what earlier rounds did: going back to a direction already dropped, or
+// contradicting an earlier conclusion without saying why.
+type LearningChecker interface {
+	CheckLearning(ctx context.Context, goal string, prior []string, now string) []string
+}
+
+// LearnPlan records a round of exploration: what it settled, the
+// principal's direction, and which open questions are answered. Notes from
+// the checker come back so the brain can address them.
+func (a *App) LearnPlan(ctx context.Context, by Actor, pid ProjectID, text, choice string, resolved []string) (portfolio.Project, []string, error) {
+	if err := requirePrivileged(by, "record what exploring taught"); err != nil {
+		return portfolio.Project{}, nil, err
+	}
+	var notes []string
+	if a.Learnings != nil {
+		if p, _, ok := a.PlanStatus(pid); ok {
+			var prior []string
+			for _, l := range p.Plan.Learned {
+				prior = append(prior, fmt.Sprintf("第 %d 轮：%s（%s）", l.Round, l.Text, firstNonEmpty(l.Choice, "continue")))
+			}
+			if len(prior) > 0 {
+				notes = a.Learnings.CheckLearning(ctx, firstNonEmpty(p.Objective.Text, p.Title), prior, text)
+			}
+		}
+	}
+	p, err := a.ChangeProject(ctx, by, pid, func(p *portfolio.Project, now time.Time) ([]Event, error) {
+		return p.Learn(text, choice, resolved, now, by)
+	})
+	if err != nil {
+		return p, nil, err
+	}
+	if choice == "pivot" || choice == "stop" {
+		// the old direction is abandoned: its unfinished probes stop too
+		var drop []ItemID
+		a.Store.Read(func(s *State) {
+			for id, it := range planning.Nodes(s.Items, pid) {
+				if it.Node.Round < p.Plan.Round {
+					drop = append(drop, id)
+				}
+			}
+		})
+		sort.Slice(drop, func(i, j int) bool { return drop[i] < drop[j] })
+		for _, id := range drop {
+			if err := a.DropItem(ctx, by, id, "探索转向，这个方向不做了"); err == nil {
+				notes = append(notes, fmt.Sprintf("已停掉旧方向的 %s", id))
+			}
+		}
+	}
+	if len(notes) > 0 {
+		_, _ = a.ChangeProject(ctx, by, pid, func(p *portfolio.Project, now time.Time) ([]Event, error) {
+			p.Plan.Notes = append(p.Plan.Notes, notes...)
+			return nil, nil
+		})
+	}
+	a.advancePlans(ctx)
+	p, _, _ = a.PlanStatus(pid)
+	return p, notes, nil
+}
+
+// roundTried: the current round of an exploration has nodes handed out
+// since the principal's last reaction was recorded.
+func roundTried(s *State, p portfolio.Project, before time.Time) bool {
+	for _, it := range s.Items {
+		if it.Project == p.ID && !it.Ask && it.Node.Round == p.Plan.Round && it.Assignment != "" &&
+			it.CreatedAt.After(p.Plan.LastReview) && it.CreatedAt.Before(before) {
+			return true
+		}
+	}
+	return false
 }

@@ -1,6 +1,7 @@
 id = "G14"
 title = "注入：访客的指令不能改变任何状态"
 critical = true
+capabilities = ["boundaries"]
 now = "2026-10-12 10:00"
 
 [[people]]

@@ -160,6 +160,7 @@ type TriageResult struct {
 	Confidence float64 // of Action
 	Hints      []string
 	NeedsPlan  bool
+	Scope      string // goal | program | explore | handoff | other (principal requests)
 }
 
 // Say posts a message into a conversation (set by the wiring; used for

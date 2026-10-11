@@ -35,12 +35,19 @@ func addPlan(r *Registry, env Env) {
 			"draft: write a revision (nodes with who, why, output, real dependencies); bot-connect checks the structure, computes parallel batches and the critical path, " +
 			"and starts exploratory agent work (findings / drafts) right away. propose: ask everyone with a node to confirm their part (an outside review is attached). " +
 			"agree: record that the principal agreed (only in a turn where they said so). The plan runs once everyone agreed; ready nodes are handed out automatically. " +
-			"status: the plan now. A changed plan is a new revision and needs agreeing again.",
+			"learn (explore plans): after the principal reacted to what a round produced, record what it settled and their direction (continue / pivot / stop / converge). " +
+			"status: the plan now. A changed task/goal plan is a new revision and needs agreeing again; explore plans are revised every round without sign-off.",
 		PrincipalOnly: true,
 		Schema: obj(props{
-			"action":           enum("", "draft", "propose", "agree", "status"),
-			"project":          str("project id or title"),
-			"kind":             enum("draft: goal = an outcome whose path is open (judge feasibility first); task = a known path", "goal", "task"),
+			"action":  enum("", "draft", "propose", "agree", "learn", "status"),
+			"project": str("project id or title"),
+			"kind": enum("draft: task = a known path; goal = a known outcome whose path is open (judge feasibility first); "+
+				"explore = the goal itself becomes clear by doing (product, creative, R&D): plan rounds of try → show the principal → learn → decide", "task", "goal", "explore"),
+			"questions":        arr("draft (explore): the open questions this exploration must answer"),
+			"timebox":          str("draft, new project: how long to explore / until when (月底, 2w…)"),
+			"learned":          str("learn: what this round settled, and why (from what the principal said about what they saw)"),
+			"choice":           enum("learn: the principal's direction", "continue", "pivot", "stop", "converge"),
+			"resolved":         arr("learn: open questions now answered"),
 			"feasibility":      enum("draft: your verdict, backed by findings", "unknown", "feasible", "conditional", "infeasible"),
 			"feasibility_note": str("draft: why, citing the findings"),
 			"assumptions":      arr("draft: what must hold"),
@@ -71,7 +78,12 @@ func addPlan(r *Registry, env Env) {
 						}
 						pr = x
 					}
-					p, err := pm.CreateProject(ctx, by, app.ProjectSpec{Title: s(a, "project"), Priority: pr,
+					until, err := dueArg(pm, tc, s(a, "timebox"))
+					if err != nil {
+						return "", domainErr(err)
+					}
+					now := pm.Clock.Now()
+					p, err := pm.CreateProject(ctx, by, app.ProjectSpec{Title: s(a, "project"), Priority: pr, Timebox: Period{From: &now, Until: until},
 						Objective: portfolio.Objective{Text: s(a, "objective")}, Home: tc.ConvKey})
 					if err != nil {
 						return "", domainErr(err)
@@ -110,6 +122,27 @@ func addPlan(r *Registry, env Env) {
 					out += "\n外部审视提出的疑点（改，或者想清楚为什么不改）：\n- " + strings.Join(res.Notes, "\n- ")
 				}
 				return out, nil
+			case "learn":
+				if !principalSpoke(pm, tc) {
+					return "", &ToolError{KindPermission, "record a round in the turn where the principal reacted to what they saw"}
+				}
+				p, notes, err := pm.LearnPlan(ctx, by, pid, s(a, "learned"), s(a, "choice"), strs(a, "resolved"))
+				if err != nil {
+					return "", domainErr(err)
+				}
+				out := pm.DescribePlan(pid)
+				if len(notes) > 0 {
+					out += "\n注意：\n- " + strings.Join(notes, "\n- ")
+				}
+				switch {
+				case p.Plan.Stage == portfolio.PlanDone:
+					out += "\n探索停止了：告诉相关的人，收尾。"
+				case p.Plan.Kind == portfolio.KindTask:
+					out += "\n收敛了：现在把剩下的事排成执行计划（plan draft，kind=task，replace=true），再 propose。"
+				default:
+					out += "\n下一轮：plan draft 写出这一轮要试的东西（便宜、能并行、做完就给委托人看）。"
+				}
+				return out, nil
 			case "agree":
 				if !principalSpoke(pm, tc) {
 					return "", &ToolError{KindPermission, "only the principal agrees to a plan, in a turn where they said so"}
@@ -131,8 +164,20 @@ func addPlan(r *Registry, env Env) {
 
 func planDraft(pm *app.App, tc TurnContext, pid ProjectID, a map[string]any) (app.PlanDraft, error) {
 	d := app.PlanDraft{Project: pid, Replace: a["replace"] == true}
+	for _, id := range tc.Focus {
+		if x, ok := pm.Signal(id); ok && x.Actor.Privileged() && (d.Since.IsZero() || x.CreatedAt.Before(d.Since)) {
+			d.Since = x.CreatedAt
+		}
+	}
 	if k := s(a, "kind"); k != "" {
-		d.Spec.Kind = portfolio.GoalKind(k)
+		kind, err := portfolio.ParseGoalKind(k)
+		if err != nil {
+			return d, domainErr(err)
+		}
+		d.Spec.Kind = kind
+	}
+	if _, ok := a["questions"]; ok {
+		d.Spec.Questions = strs(a, "questions")
 	}
 	if v := s(a, "feasibility"); v != "" {
 		verdict, err := portfolio.ParseVerdict(v)

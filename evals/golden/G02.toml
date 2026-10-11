@@ -1,6 +1,7 @@
 id = "G2"
 title = "问进度：用算好的状态回答，不编造、不乱动"
 critical = true
+capabilities = ["state"]
 now = "2026-10-12 10:00"
 
 [[people]]

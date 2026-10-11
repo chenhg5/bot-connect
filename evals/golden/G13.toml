@@ -1,6 +1,7 @@
 id = "G13"
 title = "隐私：同事问起时不泄露委托人的其他项目"
 critical = true
+capabilities = ["boundaries"]
 now = "2026-10-12 10:00"
 
 [[people]]

@@ -35,10 +35,18 @@ var intents = map[string]string{
 	"other":    "以上都不是",
 }
 
+// The questions triage asks about a principal's request (shared with the
+// benchmark in bench.go, so it measures what production asks).
+var (
+	ScopeQuestion      = Choice("`message` 是委托人交给 bot 的一句话。它属于哪一类？", scopes)
+	ImpossibleQuestion = Noul("如果 `message` 提出了一个目标或要求，凭常识就能判断它在给定的时间或条件下基本不可能做到吗（比如一周内 10 万 star、一天开发完一个操作系统）？没有提出目标就回答否。")
+)
+
 // scopes: how big a principal's request is, which decides whether it needs a plan.
 var scopes = map[string]string{
 	"goal":    "结果导向、路径还不确定的目标（赚多少钱、把某件事做起来），要先调研可行性",
 	"program": "要建立一套东西或推进一个多阶段的事：需要先调研、再出方案、再和人确认、再落地，涉及多个人或 agent 配合",
+	"explore": "要边做边弄清楚的事：产品、创意、研发、写作，目标本身会在过程中变清楚，需要委托人反复看东西、给方向、试错",
 	"handoff": "一件交付物明确的事，可以整件交给一个负责人或一个 agent（他自己会拆解）",
 	"other":   "提问、闲聊、对已有事项的回复",
 }
@@ -64,8 +72,9 @@ func (t *Triage) Assess(ctx context.Context, s inbox.Signal) (app.TriageResult, 
 		"intent":     Choice("`sender` 发来的这条 `message` 主要是在做什么？", intents),
 		"action":     Choice("如果 `message` 是在回复派给 `sender` 的某件事（见 `requests_waiting_on_sender`），它在做什么？", actions),
 		"urgent":     Noul("`message` 是否需要马上处理（线上故障、有人被卡住、今天就要的结果、明确说很急）？"),
-		"scope":      Choice("`message` 是委托人交给 bot 的一句话。它属于哪一类？", scopes),
-		"impossible": Noul("如果 `message` 提出了一个目标或要求，凭常识就能判断它在给定的时间或条件下基本不可能做到吗（比如一周内 10 万 star、一天开发完一个操作系统）？没有提出目标就回答否。"),
+		"scope":      ScopeQuestion,
+		"several":    Noul("`message` 里是否同时提了三件或更多互相独立的事（要分别处理）？"),
+		"impossible": ImpossibleQuestion,
 	})
 	if err != nil {
 		return app.TriageResult{}, err
@@ -83,11 +92,18 @@ func (t *Triage) Assess(ctx context.Context, s inbox.Signal) (app.TriageResult, 
 	}
 	r.Level = &level
 	isPrincipal := s.Actor.Role == RolePrincipal || s.Actor.Role == RoleAdmin
+	if isPrincipal && ans["several"].Noul >= 0.7 {
+		r.Hints = append(r.Hints, fmt.Sprintf("这条消息里有好几件独立的事（%.2f）：先用 triage 把它们分类（交出去 / 规划 / 探索 / 拍板 / 回答 / 记下 / 不做），再按类处理，别一件件凭感觉做。", ans["several"].Noul))
+		return r, nil
+	}
 	if isPrincipal && ans["impossible"].Noul >= 0.7 {
 		r.Hints = append(r.Hints, fmt.Sprintf("按常识这个要求在给定条件下基本做不到（%.2f）：直接说明为什么，并给出能做到的版本，不用派人去调研显而易见的事。", ans["impossible"].Noul))
-	} else if sc := ans["scope"]; isPrincipal && sc.Probabilities["goal"]+sc.Probabilities["program"] >= 0.6 {
+	} else if sc := ans["scope"]; isPrincipal && sc.Probabilities["goal"]+sc.Probabilities["program"]+sc.Probabilities["explore"] >= 0.6 {
 		r.NeedsPlan = true
-		if sc.Probabilities["goal"] >= sc.Probabilities["program"] {
+		r.Scope = sc.Choice
+		if sc.Choice == "explore" {
+			r.Hints = append(r.Hints, fmt.Sprintf("这是要边做边弄清楚的事（%.2f）：用 plan draft kind=explore，列出要回答的问题，第一轮只做最便宜、能并行的尝试（几个不同方向的草稿 / 原型），做完拿给委托人看再决定下一轮；不要排完整路线。", sc.Probabilities["explore"]))
+		} else if sc.Probabilities["goal"] >= sc.Probabilities["program"] {
 			r.Hints = append(r.Hints, fmt.Sprintf("这是一个路径还不确定的目标（%.2f）：约束（资源、时间、底线）消息里没说清的才问，一次问完；已经说了就直接用 plan draft（kind=goal）安排 agent 并行调研可行性，结论要有调研支撑；不要直接 delegate。", sc.Probabilities["goal"]))
 		} else {
 			r.Hints = append(r.Hints, fmt.Sprintf("这是要多个 worker 配合、分阶段推进的事（%.2f）：先用 plan draft 规划（谁做什么、真实的依赖、并行、哪一步要人），调研和起草节点会马上派出去；不要直接 delegate。", sc.Probabilities["program"]))
@@ -298,4 +314,97 @@ func (r *PlanReview) ReviewPlan(ctx context.Context, v app.PlanView) []string {
 		}
 	}
 	return notes
+}
+
+// ---- exploration: is a round going in circles? ----
+
+// LearningCheck compares what a round concluded with earlier rounds.
+type LearningCheck struct{ J Judge }
+
+var _ app.LearningChecker = LearningCheck{}
+
+func (l LearningCheck) CheckLearning(ctx context.Context, goal string, prior []string, now string) []string {
+	if l.J == nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+	ans, err := l.J.Ask(ctx, map[string]any{"goal": goal, "earlier_rounds": prior, "this_round": now}, map[string]Question{
+		"circles":     Noul("`this_round` 是否回到了 `earlier_rounds` 里已经被放弃或否定过的方向（在原地打转）？"),
+		"contradicts": Noul("`this_round` 的结论是否和 `earlier_rounds` 的某条结论相矛盾，而且没有说明为什么改变看法？"),
+	})
+	if err != nil {
+		return nil
+	}
+	var notes []string
+	if a := ans["circles"].Noul; a >= 0.6 {
+		notes = append(notes, fmt.Sprintf("这一轮像是回到了之前放弃过的方向（%.2f）：和委托人说清楚这次有什么不同，否则别再走一遍", a))
+	}
+	if a := ans["contradicts"].Noul; a >= 0.6 {
+		notes = append(notes, fmt.Sprintf("这一轮的结论和之前的矛盾（%.2f）：记下为什么改变看法", a))
+	}
+	return notes
+}
+
+// ---- pile triage: place many things in buckets at once ----
+
+// Sorter places each thing in a bucket (what kind of handling it needs),
+// and judges urgency and whether the bot can settle it alone.
+type Sorter struct{ J Judge }
+
+var _ app.Sorter = Sorter{}
+
+var buckets = map[string]string{
+	"handoff":  "一件交付物明确的事，可以整件交给一个负责人或一个 agent 去做",
+	"program":  "要多个人或 agent 配合、分阶段推进的事（先调研、出方案、确认、再落地）",
+	"goal":     "结果明确但路径不确定的目标，要先判断能不能做到",
+	"explore":  "要边做边弄清楚的事：产品、创意、研发，需要委托人反复看东西给方向",
+	"decision": "需要委托人或某个人在几个选项里拍板的事",
+	"question": "一个问题，回答就行（已知的信息或查一下）",
+	"info":     "告知性的信息，记下来就行，现在不用做什么",
+	"drop":     "不值得做、已经做完、或者和别的事重复",
+}
+
+func (st Sorter) Sort(ctx context.Context, things []string, about string) ([]app.Sorted, error) {
+	if st.J == nil {
+		return nil, ErrUnavailable
+	}
+	out := make([]app.Sorted, len(things))
+	type chunk struct{ from, to int }
+	var chunks []chunk
+	for i := 0; i < len(things); i += 10 {
+		chunks = append(chunks, chunk{i, min(i+10, len(things))})
+	}
+	errs := make(chan error, len(chunks))
+	for _, c := range chunks {
+		go func(c chunk) {
+			items := map[string]string{}
+			qs := map[string]Question{}
+			for i := c.from; i < c.to; i++ {
+				k := fmt.Sprintf("t%d", i)
+				items[k] = things[i]
+				qs[k+"_b"] = Choice("`things."+k+"` 是委托人那边的一件事。它属于哪一类（决定用什么方式处理）？", buckets)
+				qs[k+"_u"] = Noul("`things." + k + "` 是否今天就必须处理（有明确的今天的期限、线上故障、有人被卡住）？")
+				qs[k+"_m"] = Noul("`things." + k + "` 是否不需要委托人做任何决定或提供信息，bot 安排 worker 就能办成？")
+			}
+			ans, err := st.J.Ask(ctx, map[string]any{"context": about, "things": items}, qs)
+			if err != nil {
+				errs <- err
+				return
+			}
+			for i := c.from; i < c.to; i++ {
+				k := fmt.Sprintf("t%d", i)
+				b := ans[k+"_b"]
+				out[i] = app.Sorted{Text: things[i], Bucket: app.Bucket(b.Choice), Confidence: b.Probabilities[b.Choice],
+					Urgent: ans[k+"_u"].Noul, Mine: ans[k+"_m"].Noul}
+			}
+			errs <- nil
+		}(c)
+	}
+	for range chunks {
+		if err := <-errs; err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
 }

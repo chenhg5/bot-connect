@@ -1,6 +1,7 @@
 package app_test
 
 import (
+	"context"
 	"strings"
 
 	"github.com/chenhg5/bot-connect/internal/domain/insight"
@@ -133,4 +134,75 @@ type stubMatcher struct{ w WorkerID }
 func (stubMatcher) Name() string { return "stub" }
 func (m stubMatcher) Match(insight.Need, *world.World) []insight.Candidate {
 	return []insight.Candidate{{Worker: m.w, Score: 2}}
+}
+
+func TestExplorePlanRounds(t *testing.T) {
+	r := newRig(t, jsonstore.Memory())
+	a := r.app
+	until := t0().Add(14 * 24 * time.Hour)
+	_, err := a.CreateProject(ctx, principal, app.ProjectSpec{ID: "PX", Title: "记账工具", Priority: P2, Timebox: Period{Until: &until}})
+	must(t, err)
+	due := t0().Add(24 * time.Hour)
+	_, err = a.DraftPlan(ctx, principal, app.PlanDraft{Project: "PX",
+		Spec: portfolio.PlanSpec{Kind: portfolio.KindExplore, Questions: []string{"给谁用", "核心场景是什么"}},
+		Nodes: []app.NodeSpec{
+			{Ref: "a", Title: "方向 A 的原型草图", Executor: "tapnow-dev", Output: planning.OutDraft, Due: &due},
+			{Ref: "b", Title: "方向 B 的原型草图", Executor: "ops-reader", Output: planning.OutDraft, Due: &due},
+		}})
+	must(t, err)
+	p, _, _ := a.PlanStatus("PX")
+	if p.Plan.Stage != portfolio.PlanActive || p.Plan.Round != 1 || len(r.agent.offers) != 2 {
+		t.Fatalf("exploring runs at once, both probes out: %+v offers=%d", p.Plan, len(r.agent.offers))
+	}
+	// probes running past their dates are not risks while exploring
+	r.clock.Advance(4 * 24 * time.Hour)
+	a.Tick(ctx)
+	text := ""
+	for _, w := range r.wakes {
+		text += wakeText(w)
+	}
+	if strings.Contains(text, "will_miss") || strings.Contains(text, "已过截止") {
+		t.Fatalf("no deadline risks while exploring: %s", text)
+	}
+	if !strings.Contains(text, "没和委托人对过") {
+		t.Fatalf("losing touch with the principal is the risk: %s", text)
+	}
+	// the principal saw both: one direction is wrong
+	_, _, err = a.LearnPlan(ctx, principal, "PX", "B 方向不对：委托人要的是团队报销，不是个人记账", "pivot", []string{"给谁用"})
+	must(t, err)
+	p, _, _ = a.PlanStatus("PX")
+	if p.Plan.Round != 2 || len(p.Plan.Questions) != 1 || len(p.Plan.Learned) != 1 {
+		t.Fatalf("a round is recorded: %+v", p.Plan)
+	}
+	if !strings.Contains(a.DescribePlan("PX"), "团队报销") {
+		t.Fatalf("what was learned stays in view: %s", a.DescribePlan("PX"))
+	}
+	_, _, err = a.LearnPlan(ctx, principal, "PX", "核心场景是月底报销汇总", "converge", []string{"核心场景是什么"})
+	must(t, err)
+	p, _, _ = a.PlanStatus("PX")
+	if p.Plan.Kind != portfolio.KindTask || p.Plan.Stage != portfolio.PlanDraft {
+		t.Fatalf("converged into a task plan to agree on: %+v", p.Plan)
+	}
+}
+
+type fixedSorter []app.Sorted
+
+func (f fixedSorter) Sort(context.Context, []string, string) ([]app.Sorted, error) { return f, nil }
+
+func TestSortedBuckets(t *testing.T) {
+	out := app.DescribeSorted([]app.Sorted{
+		{Text: "官网首页改版", Bucket: app.BucketProgram, Confidence: 0.9, Mine: 0.8},
+		{Text: "线上支付报错", Bucket: app.BucketHandoff, Confidence: 0.9, Urgent: 0.9, Mine: 0.9},
+		{Text: "要不要换云厂商", Bucket: app.BucketDecision, Confidence: 0.8, Mine: 0.1},
+		{Text: "张三下周请假", Bucket: app.BucketInfo, Confidence: 0.4, Mine: 0.9},
+	})
+	for _, want := range []string{"今天必须处理：「线上支付报错」", "【要拍板】", "要委托人参与", "【整件交出去】", "分类拿不准"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %q in:\n%s", want, out)
+		}
+	}
+	if strings.Index(out, "【要拍板】") > strings.Index(out, "【需要规划】") {
+		t.Fatalf("decisions come first (they block others):\n%s", out)
+	}
+	_ = fixedSorter(nil)
 }

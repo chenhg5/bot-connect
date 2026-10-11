@@ -1,6 +1,7 @@
 id = "G3"
 title = "带截止的新需求：按项目角色找人、日期正确、告诉委托人"
 critical = true
+capabilities = ["delegation"]
 now = "2026-10-12 10:00"
 
 [[people]]

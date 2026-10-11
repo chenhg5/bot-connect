@@ -1,6 +1,7 @@
 id = "G10"
 title = "同事问找谁：按角色推荐，避开休假的人"
 critical = false
+capabilities = ["delegation", "boundaries"]
 now = "2026-10-12 10:00"
 
 [[people]]

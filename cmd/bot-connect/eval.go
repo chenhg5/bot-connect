@@ -12,7 +12,9 @@ import (
 	"time"
 
 	"github.com/chenhg5/bot-connect/evals"
+	"github.com/chenhg5/bot-connect/internal/assemble"
 	"github.com/chenhg5/bot-connect/internal/cli"
+	"github.com/chenhg5/bot-connect/internal/judge"
 	"github.com/chenhg5/bot-connect/internal/sim"
 )
 
@@ -57,12 +59,47 @@ func evalCmd() *cli.Command {
 				},
 			},
 			{
+				Name: "jev", Summary: "benchmark the L1 judgments (Jev) on labelled data",
+				Examples: []string{"bot-connect eval jev", "bot-connect eval jev --data ./my-scope.jsonl"},
+				Flags: []cli.Flag{configFlag,
+					{Name: "data", Type: cli.String, Desc: "scope dataset (default: the built-in evals/jev/scope.jsonl)"},
+				},
+				Run: func(c *cli.Ctx) error {
+					cfg, _, err := loadConfig(c)
+					if err != nil {
+						return err
+					}
+					j := assemble.NewJudge(cfg.Judge)
+					if _, live := j.(*judge.Jev); !live {
+						return fmt.Errorf("no judge configured: set [judge] api_key (or TYPESAFE_API_KEY)")
+					}
+					var raw []byte
+					if p := c.Str("data"); p != "" {
+						raw, err = os.ReadFile(p)
+					} else {
+						raw, err = evals.Jev.ReadFile("jev/scope.jsonl")
+					}
+					if err != nil {
+						return err
+					}
+					items, err := judge.ParseScopeItems(raw)
+					if err != nil {
+						return err
+					}
+					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+					defer cancel()
+					r := judge.BenchScope(ctx, j, items)
+					return c.Out(r, func(w io.Writer) { fmt.Fprintln(w, r.Text()) })
+				},
+			},
+			{
 				Name: "run", Summary: "run cases against the configured brain",
 				Examples: []string{"bot-connect eval run", "bot-connect eval run --case G3,G6", "bot-connect eval run --critical --out ./eval-out"},
 				Flags: []cli.Flag{configFlag, casesFlag,
 					{Name: "case", Type: cli.List, Desc: "only these case ids"},
 					{Name: "critical", Type: cli.Bool, Desc: "only critical (★) cases"},
 					{Name: "out", Type: cli.String, Default: "eval-out", Desc: "where transcripts go"},
+					{Name: "repeat", Type: cli.Int, Default: "1", Desc: "run each case this many times and report pass rates (the brain is not deterministic)"},
 				},
 				Run: func(c *cli.Ctx) error {
 					cfg, _, err := loadConfig(c)
@@ -96,23 +133,53 @@ func evalCmd() *cli.Command {
 						if (len(only) > 0 && !only[strings.ToUpper(cs.ID)]) || (c.Bool("critical") && !cs.Critical) {
 							continue
 						}
-						c.Info("▶ %s %s", cs.ID, cs.Title)
-						ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
-						h, err := sim.New(ctx, cfg, cs)
-						if err != nil {
+						for run := 1; run <= max(c.Int("repeat"), 1); run++ {
+							name := cs.ID
+							if c.Int("repeat") > 1 {
+								name = fmt.Sprintf("%s#%d", cs.ID, run)
+							}
+							c.Info("▶ %s %s", name, cs.Title)
+							ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+							h, err := sim.New(ctx, cfg, cs)
+							if err != nil {
+								cancel()
+								results = append(results, sim.Result{ID: name, Title: cs.Title, Critical: cs.Critical, Failures: []string{err.Error()}})
+								continue
+							}
+							r := h.Run(ctx)
+							h.Close()
 							cancel()
-							results = append(results, sim.Result{ID: cs.ID, Title: cs.Title, Critical: cs.Critical, Failures: []string{err.Error()}})
-							continue
+							r.ID = name
+							_ = os.WriteFile(filepath.Join(out, name+".md"), []byte(r.Transcript+"\n## result\n"+resultText(r)), 0o644)
+							c.Info("  %s (%s)", map[bool]string{true: "PASS", false: "FAIL"}[r.Pass], r.Duration)
+							for _, f := range r.Failures {
+								c.Info("    ✗ %s", f)
+							}
+							results = append(results, r)
 						}
-						r := h.Run(ctx)
-						h.Close()
-						cancel()
-						_ = os.WriteFile(filepath.Join(out, cs.ID+".md"), []byte(r.Transcript+"\n## result\n"+resultText(r)), 0o644)
-						c.Info("  %s (%s)", map[bool]string{true: "PASS", false: "FAIL"}[r.Pass], r.Duration)
-						for _, f := range r.Failures {
-							c.Info("    ✗ %s", f)
+					}
+					c.Info("by capability (runs passed · cases passing every run):")
+					for _, s := range sim.ScoreByCapability(results) {
+						c.Info("  %-13s %3.0f%%  %d/%d runs · %d/%d cases reliable", s.Capability, 100*float64(s.Passed)/float64(max(s.Runs, 1)), s.Passed, s.Runs, s.Reliable, s.Cases)
+					}
+					if c.Int("repeat") > 1 {
+						rates, order := map[string][2]int{}, []string{}
+						for _, r := range results {
+							id, _, _ := strings.Cut(r.ID, "#")
+							x, seen := rates[id]
+							if !seen {
+								order = append(order, id)
+							}
+							x[1]++
+							if r.Pass {
+								x[0]++
+							}
+							rates[id] = x
 						}
-						results = append(results, r)
+						c.Info("pass rates:")
+						for _, id := range order {
+							c.Info("  %s %d/%d", id, rates[id][0], rates[id][1])
+						}
 					}
 					passed, crit, critPassed := 0, 0, 0
 					for _, r := range results {

@@ -84,6 +84,11 @@ func (a *App) Ingest(ctx context.Context, sp SignalSpec) (inbox.Signal, bool, er
 				draft.Reason = sp.Reason + ":" + r.Intent
 			}
 			draft.Hints, draft.NeedsPlan = r.Hints, r.NeedsPlan
+			if sp.Actor.Privileged() {
+				if p, ok := a.exploreAwaitingReaction(); ok {
+					draft.Hints = append(draft.Hints, fmt.Sprintf("「%s」第 %d 轮的尝试已经出去了：如果这条是委托人对它的反应，先用 plan learn 记下学到了什么和方向（continue / pivot / stop / converge），再安排下一轮。", p.Title, p.Plan.Round))
+				}
+			}
 			if !r.NeedsPlan && sp.Actor.Privileged() {
 				if g, ok := a.unplannedGoal(); ok {
 					draft.NeedsPlan = true
@@ -544,4 +549,19 @@ func (a *App) unplannedGoal() (inbox.Signal, bool) {
 		}
 	})
 	return goal, found
+}
+
+// exploreAwaitingReaction: an exploration whose current round went out and
+// nothing was recorded since.
+func (a *App) exploreAwaitingReaction() (portfolio.Project, bool) {
+	var out portfolio.Project
+	found := false
+	a.Store.Read(func(s *State) {
+		for _, p := range s.Projects {
+			if p.Plan.Kind == portfolio.KindExplore && p.Plan.Stage == portfolio.PlanActive && roundTried(s, p, a.now()) {
+				out, found = p, true
+			}
+		}
+	})
+	return out, found
 }

@@ -1,0 +1,50 @@
+id = "G25"
+title = "探索：做一个还没想清楚的产品——一轮便宜的尝试，给委托人看，记下学到的"
+critical = true
+milestone = "explore"
+now = "2026-10-12 10:00"
+notes = "目标本身要边做边清楚：不排完整路线；第一轮几个方向并行出草稿；委托人否定后记下学到的，转向，不当成延期。"
+
+[[agents]]
+id = "designer"
+description = "产品设计 agent：写产品概念、画原型草图、写用户故事"
+capabilities = ["design"]
+
+[[agents]]
+id = "researcher"
+description = "研究型 agent：调研用户、竞品和市场"
+capabilities = ["web:read"]
+
+[[steps]]
+say = "我想做一个给独立开发者用的记账工具，还没想清楚具体做成什么样，你先推进着看看"
+timeout = "5m"
+  [[steps.expect]]
+  type = "plan"
+  kind = "explore"
+  agents_first = true
+  why = "边做边弄清楚的事，用探索型计划"
+  [[steps.expect]]
+  type = "assignment"
+  worker = "designer|researcher"
+  why = "第一轮的尝试马上开始"
+  [[steps.expect]]
+  type = "judge"
+  to = "principal"
+  question = "这条回复是否说明了第一轮要做哪几个便宜的尝试（不同方向的草稿、原型或调研），以及做完会拿给委托人看再决定下一步，而不是排出一份完整的开发路线图？"
+  at_least = 0.6
+  why = "计划循环，不排路径"
+
+[[steps]]
+say = "看了你们的方向，都不太对。我其实想要的是小团队报销和分账，不是个人记账。"
+timeout = "5m"
+  [[steps.expect]]
+  type = "plan"
+  kind = "explore"
+  learned = 1
+  why = "记下这一轮学到的，转向"
+  [[steps.expect]]
+  type = "judge"
+  to = "principal"
+  question = "这条回复是否把委托人的反馈当作方向调整（转向小团队报销和分账、安排下一轮尝试），而没有把它当成延期、失败或需要道歉的问题？"
+  at_least = 0.6
+  why = "重来是探索的正常进展"

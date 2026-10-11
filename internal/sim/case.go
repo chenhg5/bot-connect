@@ -24,8 +24,11 @@ type Case struct {
 	Title     string `toml:"title"`
 	Critical  bool   `toml:"critical"`
 	Milestone string `toml:"milestone"`
-	Notes     string `toml:"notes"`
-	Now       string `toml:"now"` // virtual start time, "2026-10-10 10:00" (local)
+	// Capabilities the case measures (triage, planning, explore, delegation,
+	// risk, state, pm, boundaries, communication, judgment).
+	Capabilities []string `toml:"capabilities"`
+	Notes        string   `toml:"notes"`
+	Now          string   `toml:"now"` // virtual start time, "2026-10-10 10:00" (local)
 
 	People      []PersonSpec  `toml:"people"`
 	Agents      []AgentSpec   `toml:"agents"`
@@ -168,8 +171,9 @@ type Check struct {
 	Feasibility string   `toml:"feasibility"`  // plan: allowed verdicts, "unknown|conditional"
 	Parallel    bool     `toml:"parallel"`     // plan: the first batch has two or more nodes
 	AgentsFirst bool     `toml:"agents_first"` // plan: no research or drafting handed to a person without a reason
-	Compounding bool     `toml:"compounding"`  // plan: has a node that builds something for repeated work
-	Why         string   `toml:"why"`          // what the check protects, shown when it fails
+	Compounding bool     `toml:"compounding"`
+	Learned     int      `toml:"learned"` // plan: at least this many rounds recorded  // plan: has a node that builds something for repeated work
+	Why         string   `toml:"why"`     // what the check protects, shown when it fails
 }
 
 // LoadDir reads every *.toml case in a directory, sorted by id.

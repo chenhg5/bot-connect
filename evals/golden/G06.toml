@@ -1,6 +1,7 @@
 id = "G6"
 title = "还价：说明影响请委托人决定，不自作主张"
 critical = false
+capabilities = ["pm"]
 now = "2026-10-12 10:00"
 
 [[people]]

@@ -34,9 +34,18 @@ func (s Stage) Committed() bool { return s == NoPlan || s == PlanActive || s == 
 type GoalKind string
 
 const (
-	KindTask GoalKind = "task"
-	KindGoal GoalKind = "goal"
+	KindTask    GoalKind = "task"
+	KindGoal    GoalKind = "goal"
+	KindExplore GoalKind = "explore" // the goal itself becomes clear by doing: products, creative work, research & development
 )
+
+func ParseGoalKind(s string) (GoalKind, error) {
+	switch k := GoalKind(s); k {
+	case "", KindTask, KindGoal, KindExplore:
+		return k, nil
+	}
+	return "", Invalid("unknown kind %q (task, goal, explore)", s)
+}
 
 // Verdict on feasibility.
 type Verdict string
@@ -77,7 +86,22 @@ type Plan struct {
 	PrincipalOK bool        `json:"principal_ok,omitempty"`
 	Notes       []string    `json:"notes,omitempty"` // review notes on this revision
 	By          Actor       `json:"by"`              // who drafted it; work it hands out is asked in their name
-	UpdatedAt   time.Time   `json:"updated_at,omitempty"`
+	// Exploration: the plan is a loop (try → show → learn → decide), not a
+	// path. What is open, what was learned, and when the principal last saw it.
+	Questions  []string   `json:"questions,omitempty"`
+	Learned    []Learning `json:"learned,omitempty"`
+	Round      int        `json:"round,omitempty"`
+	LastReview time.Time  `json:"last_review,omitempty"`
+	UpdatedAt  time.Time  `json:"updated_at,omitempty"`
+}
+
+// Learning is one thing a round of exploration settled, kept so the next
+// round — or a restart — builds on it instead of going in circles.
+type Learning struct {
+	At     time.Time `json:"at"`
+	Round  int       `json:"round"`
+	Text   string    `json:"text"`             // what we now know, and why
+	Choice string    `json:"choice,omitempty"` // continue | pivot | stop | converge
 }
 
 // PlanSpec is what drafting changes about the whole.
@@ -86,6 +110,7 @@ type PlanSpec struct {
 	Feasibility *Feasibility
 	Assumptions []string
 	StopIf      []string
+	Questions   []string
 }
 
 // Draft records a new revision of the plan. A plan that was agreed must be
@@ -114,7 +139,60 @@ func (p *Project) Draft(sp PlanSpec, now time.Time, by Actor) []Event {
 	if sp.StopIf != nil {
 		pl.StopIf = clean(sp.StopIf)
 	}
+	if sp.Questions != nil {
+		pl.Questions = clean(sp.Questions)
+	}
+	if pl.Kind == KindExplore {
+		// Exploring is revising: nobody signs off a path that doesn't exist
+		// yet. The principal is in the loop through reviews instead.
+		pl.Stage, pl.PrincipalOK = PlanActive, true
+		if pl.Round == 0 {
+			pl.Round = 1
+		}
+	}
 	return []Event{p.ev("plan.drafted", now, by, "revision", pl.Revision)}
+}
+
+// Learn records what a round settled, with the principal's direction:
+// continue (next round), pivot (new direction, same goal), stop, or
+// converge (the open questions are answered: turn it into a task plan).
+func (p *Project) Learn(text, choice string, resolved []string, now time.Time, by Actor) ([]Event, error) {
+	pl := &p.Plan
+	if pl.Kind != KindExplore {
+		return nil, Conflict("only exploration plans learn in rounds; %s is a %s plan", p.ID, pl.Kind)
+	}
+	if strings.TrimSpace(text) == "" {
+		return nil, Invalid("what was learned?")
+	}
+	switch choice {
+	case "", "continue", "pivot", "stop", "converge":
+	default:
+		return nil, Invalid("choice: continue | pivot | stop | converge")
+	}
+	pl.Learned = append(pl.Learned, Learning{At: now, Round: pl.Round, Text: strings.TrimSpace(text), Choice: choice})
+	if len(resolved) > 0 {
+		var open []string
+		for _, q := range pl.Questions {
+			done := false
+			for _, r := range resolved {
+				done = done || strings.Contains(q, strings.TrimSpace(r)) || strings.Contains(strings.TrimSpace(r), q)
+			}
+			if !done {
+				open = append(open, q)
+			}
+		}
+		pl.Questions = open
+	}
+	pl.LastReview, pl.UpdatedAt = now, now
+	switch choice {
+	case "continue", "pivot", "":
+		pl.Round++
+	case "stop":
+		pl.Stage = PlanDone
+	case "converge":
+		pl.Kind, pl.Stage, pl.PrincipalOK = KindTask, PlanDraft, false
+	}
+	return []Event{p.ev("plan.learned", now, by, "round", pl.Round, "choice", choice)}, nil
 }
 
 // Propose puts the draft to the people in it.

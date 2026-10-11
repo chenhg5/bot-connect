@@ -1,0 +1,47 @@
+{"text": "帮我查一下昨晚支付回调失败的日志", "label": "handoff"}
+{"text": "这周五前把 v0.0.6 发出去", "label": "handoff"}
+{"text": "让王五把埋点方案定下来，下周三前", "label": "handoff"}
+{"text": "把这份合同发给法务看一下", "label": "handoff"}
+{"text": "把官网首页的 banner 换成新年版本", "label": "handoff"}
+{"text": "修一下登录页在 Safari 上的样式错位", "label": "handoff"}
+{"text": "整理一下上个月的用户反馈，出个汇总", "label": "handoff"}
+{"text": "订一下周四下午的会议室", "label": "handoff"}
+{"text": "把 README 里的安装步骤更新成新的命令", "label": "handoff"}
+{"text": "跑一下全量回归测试，把失败的列给我", "label": "handoff"}
+{"text": "帮我给开源项目搭一套完整的周期发版流程", "label": "program"}
+{"text": "下个月要把官网整体改版上线，设计、开发、内容都要动", "label": "program"}
+{"text": "我们要从阿里云迁到 AWS，帮我推进起来", "label": "program"}
+{"text": "组织一次 50 人的线下技术沙龙，下个月中旬", "label": "program"}
+{"text": "建立一套新人入职的流程和文档", "label": "program"}
+{"text": "把客服系统接入 AI 自动回复，先和客服团队试点再全量", "label": "program"}
+{"text": "推进 SOC2 合规认证", "label": "program"}
+{"text": "把移动端从 React Native 重写成原生", "label": "program"}
+{"text": "准备下季度的融资材料和路演", "label": "program"}
+{"text": "做一次全公司的安全审计并把问题修完", "label": "program"}
+{"text": "一年内帮我赚到 100 万", "label": "goal"}
+{"text": "今年把 bot-connect 做到 1 万 star", "label": "goal"}
+{"text": "三个月内把产品的日活翻一倍", "label": "goal"}
+{"text": "把服务器成本降低 40%", "label": "goal"}
+{"text": "年底前让付费用户达到 1000 个", "label": "goal"}
+{"text": "下个季度把客服响应时间降到 5 分钟以内", "label": "goal"}
+{"text": "让团队的发版频率从每月一次提高到每周一次", "label": "goal"}
+{"text": "半年内把用户留存率提升到 40%", "label": "goal"}
+{"text": "我想做一个给独立开发者用的记账工具，还没想清楚做成什么样", "label": "explore"}
+{"text": "想给销售团队做个 AI 助手，你先推进着看看", "label": "explore"}
+{"text": "帮我想想 bot-connect 的品牌和 logo，先出几版看看", "label": "explore"}
+{"text": "我想写一本关于 agent 协作的书，先试着写个开头", "label": "explore"}
+{"text": "新产品的定价还没想好，先探索几个方案", "label": "explore"}
+{"text": "首页文案总觉得不对，帮我试几个方向", "label": "explore"}
+{"text": "想做一个播客，主题和形式都还没定", "label": "explore"}
+{"text": "研究一下能不能用 agent 自动做代码 review，先做个原型试试", "label": "explore"}
+{"text": "在吗", "label": "other"}
+{"text": "官网改版现在怎么样了？", "label": "other"}
+{"text": "好的，按你说的来", "label": "other"}
+{"text": "张三下周三请假", "label": "other"}
+{"text": "这个 PR 谁在负责？", "label": "other"}
+{"text": "谢谢，辛苦了", "label": "other"}
+{"text": "可以，就选方案 B", "label": "other"}
+{"text": "上次那个报错后来查到原因了吗", "label": "other"}
+{"text": "这个月让公司估值涨到 100 亿", "label": "goal", "impossible": true}
+{"text": "明天让我们的 App 冲上 App Store 总榜第一", "label": "goal", "impossible": true}
+{"text": "今天下午把整个后端用 Rust 重写完", "label": "program", "impossible": true}

@@ -433,6 +433,12 @@ func New(env Env) *Registry {
 		Schema:      obj(props{"task_id": str("task id")}, "task_id"),
 		Handler: func(ctx context.Context, tc TurnContext, a map[string]any) (string, error) {
 			if t, ok := workers.Task(s(a, "task_id")); !ok || !workers.TaskVisible(t, env.scope(tc)) {
+				if env.App != nil {
+					if _, ok := env.App.Assignment(AssignmentID(s(a, "task_id"))); ok {
+						return "", &ToolError{KindInvalid, s(a, "task_id") + " is a tracked assignment, not an agent task: stop it with review action=cancel " +
+							"(in an exploration, plan learn with choice=pivot or stop drops the old direction's probes by itself)"}
+					}
+				}
 				return "", fmt.Errorf("no such task")
 			}
 			t, err := workers.Cancel(s(a, "task_id"))
@@ -589,6 +595,7 @@ func New(env Env) *Registry {
 	if env.App != nil {
 		addPM(r, env)
 		addPlan(r, env)
+		addTriage(r, env)
 	}
 	sort.Strings(r.names)
 	return r

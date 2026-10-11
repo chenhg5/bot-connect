@@ -600,6 +600,9 @@ func (a *App) planLine(p portfolio.Project) string {
 	if p.Plan.Kind == portfolio.KindGoal {
 		line += "，可行性 " + string(p.Plan.Feasibility.Verdict)
 	}
+	if p.Plan.Kind == portfolio.KindExplore {
+		line = fmt.Sprintf("；探索第 %d 轮，%d 个问题待答", p.Plan.Round, len(p.Plan.Questions))
+	}
 	if wait := a.PlanWaitingOn(p.ID); len(wait) > 0 {
 		line += "，等待确认：" + strings.Join(wait, "、")
 	}

@@ -47,6 +47,7 @@ type Node struct {
 	Compounding bool         `json:"compounding,omitempty"` // a tool / skill / worker for repeated work
 	Routine     string       `json:"routine,omitempty"`     // the kind of repeated work it belongs to ("release")
 	Confirm     AssignmentID `json:"confirm,omitempty"`     // the executor's confirmation while the plan is proposed
+	Round       int          `json:"round,omitempty"`       // exploring: the round it was tried in
 }
 
 // Who tells whether a worker exists and is an agent.

@@ -1,6 +1,7 @@
 id = "G1"
 title = "秒回：寒暄不调用重工具"
 critical = true
+capabilities = ["communication"]
 now = "2026-10-12 10:00"
 
 [[steps]]

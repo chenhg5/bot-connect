@@ -126,11 +126,15 @@ func wireJudge(a *app.App, h *hub.Hub, bc config.BotConfig, jc config.Judge) {
 	j := NewJudge(jc)
 	_, live := j.(*judge.Jev)
 	a.Say = func(ctx context.Context, conv, text string) error { return h.SendTo(ctx, conv, text) }
+	if live {
+		a.Sorter = judge.Sorter{J: j}
+	}
 	if live && config.On(jc.Triage) {
 		a.Triage = &judge.Triage{J: j, App: a}
 	}
 	if live && config.On(jc.PlanReview) {
 		a.Reviewer = &judge.PlanReview{J: j}
+		a.Learnings = judge.LearningCheck{J: j}
 	}
 	if live && config.On(jc.Staffing) {
 		a.Staffing.Matchers = append(a.Staffing.Matchers, judge.Matcher{J: j})

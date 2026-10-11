@@ -7,3 +7,8 @@ import "embed"
 //
 //go:embed golden/*.toml
 var Golden embed.FS
+
+// Jev holds the labelled data for the L1 judgment benchmarks (jev/*.jsonl).
+//
+//go:embed jev/*.jsonl
+var Jev embed.FS

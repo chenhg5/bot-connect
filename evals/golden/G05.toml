@@ -1,6 +1,7 @@
 id = "G5"
 title = "人的回复归位：登记到对的委托，并告诉委托人"
 critical = true
+capabilities = ["state"]
 now = "2026-10-12 10:00"
 
 [[people]]

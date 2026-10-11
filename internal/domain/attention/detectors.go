@@ -7,6 +7,7 @@ import (
 	"github.com/chenhg5/bot-connect/internal/domain/delegation"
 	"github.com/chenhg5/bot-connect/internal/domain/insight"
 	"github.com/chenhg5/bot-connect/internal/domain/planning"
+	"github.com/chenhg5/bot-connect/internal/domain/portfolio"
 	. "github.com/chenhg5/bot-connect/internal/domain/shared"
 	"github.com/chenhg5/bot-connect/internal/domain/workforce"
 )
@@ -14,7 +15,7 @@ import (
 // DefaultDetectors is the first rule set.
 func DefaultDetectors() []Detector {
 	return []Detector{Overdue{}, WillMiss{}, ThinSlack{}, Unassigned{}, Silent{}, Stuck{}, LateDependency{},
-		WaitingOnUs{}, OfferUnanswered{}, Overload{}, AssigneeUnavailable{}, Routine{}}
+		WaitingOnUs{}, OfferUnanswered{}, Overload{}, AssigneeUnavailable{}, Routine{}, Exploration{}}
 }
 
 func fmtT(t time.Time) string { return t.Format("01-02 15:04") }
@@ -322,6 +323,53 @@ func (r Routine) Detect(c *Context) []Signal {
 		out = append(out, Signal{Key: "routine:" + rt, Kind: "routine", Level: Medium, Subject: "routine:" + rt,
 			Summary: fmt.Sprintf("「%s」已经做了 %d 次，还没有沉淀成工具或专门的 worker", rt, n),
 			Suggest: []string{"build_tool", "train_worker"}, Facts: map[string]any{"routine": rt, "times": n}})
+	}
+	return out
+}
+
+// Exploration watches what goes wrong when exploring — not missed dates, but
+// losing touch with the principal, running past the timebox, and not
+// noticing that the open questions are answered.
+type Exploration struct{ ReviewEvery time.Duration }
+
+func (Exploration) Name() string { return "exploration" }
+func (e Exploration) Detect(c *Context) []Signal {
+	every := e.ReviewEvery
+	if every <= 0 {
+		every = 72 * time.Hour
+	}
+	var out []Signal
+	for id, p := range c.Projects {
+		pl := p.Plan
+		if pl.Kind != portfolio.KindExplore || pl.Stage != portfolio.PlanActive || !p.Open() {
+			continue
+		}
+		mk := func(kind string, lv Level, summary string, suggest ...string) Signal {
+			return Signal{Key: kind + ":" + string(id), Kind: kind, Level: lv, Subject: "project:" + string(id), Project: id,
+				Summary: summary, Suggest: suggest, Facts: map[string]any{"round": pl.Round, "open_questions": len(pl.Questions)}}
+		}
+		last := pl.LastReview
+		if last.IsZero() {
+			last = p.CreatedAt
+		}
+		if gap := c.Now.Sub(last); gap > every {
+			out = append(out, mk("explore_unreviewed", Medium,
+				fmt.Sprintf("「%s」第 %d 轮已经 %s 没和委托人对过了：拿出具体的东西给他看，别在可能偏了的方向上继续做", p.Title, pl.Round, gap.Round(time.Hour)),
+				"show_and_ask", "record_learning"))
+		}
+		if until := p.Timebox.Until; until != nil {
+			total := until.Sub(p.CreatedAt)
+			if c.Now.After(*until) {
+				out = append(out, mk("explore_timebox", High, fmt.Sprintf("「%s」的探索时间盒已过（%s），还有 %d 个问题没答案：收敛、延长，还是停", p.Title, fmtT(*until), len(pl.Questions)),
+					"converge", "extend", "stop"))
+			} else if total > 0 && c.Now.Sub(p.CreatedAt) > total*4/5 && len(pl.Questions) > 0 {
+				out = append(out, mk("explore_timebox", Medium, fmt.Sprintf("「%s」探索时间盒用了八成，还有 %d 个问题没答案", p.Title, len(pl.Questions)),
+					"narrow", "converge"))
+			}
+		}
+		if len(pl.Questions) == 0 && len(pl.Learned) > 0 {
+			out = append(out, mk("explore_converged", Medium, fmt.Sprintf("「%s」列出的问题都有答案了：考虑收敛成执行计划", p.Title), "converge"))
+		}
 	}
 	return out
 }

@@ -1,6 +1,7 @@
 id = "G12"
 title = "没事就安静：一切正常时不发消息"
 critical = true
+capabilities = ["communication"]
 now = "2026-10-12 10:00"
 
 [[people]]

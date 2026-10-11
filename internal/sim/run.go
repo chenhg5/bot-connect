@@ -18,20 +18,21 @@ import (
 
 // Result of one case.
 type Result struct {
-	ID         string
-	Title      string
-	Critical   bool
-	Pass       bool
-	Failures   []string
-	Duration   time.Duration
-	Tools      []string // tools used, in order
-	Transcript string
+	ID           string
+	Title        string
+	Critical     bool
+	Capabilities []string
+	Pass         bool
+	Failures     []string
+	Duration     time.Duration
+	Tools        []string // tools used, in order
+	Transcript   string
 }
 
 // Run plays a case's steps and checks its expectations.
 func (h *Harness) Run(ctx context.Context) Result {
 	c := h.Case
-	res := Result{ID: c.ID, Title: c.Title, Critical: c.Critical}
+	res := Result{ID: c.ID, Title: c.Title, Critical: c.Critical, Capabilities: c.Capabilities}
 	start := time.Now()
 	var tr strings.Builder
 	fmt.Fprintf(&tr, "# %s %s\n(virtual start %s)\n", c.ID, c.Title, h.Clock.Now().Format("2006-01-02 15:04 Mon"))
@@ -314,7 +315,7 @@ func (h *Harness) matchAssignment(s *app.State, a delegation.Assignment, ck Chec
 	if parent := s.Items[a.Item].Parent; parent != "" {
 		title += " " + s.Items[parent].Title
 	}
-	return (ck.Worker == "" || string(a.Worker) == ck.Worker) &&
+	return (ck.Worker == "" || statusIn(string(a.Worker), ck.Worker)) &&
 		(ck.Kind == "" || string(a.Kind) == ck.Kind) &&
 		(ck.Status == "" || statusIn(string(a.Status), ck.Status)) &&
 		(ck.Title == "" || strings.Contains(title, ck.Title)) &&
@@ -493,6 +494,9 @@ func planMismatch(h *Harness, ck Check, p portfolio.Project, an planning.Analysi
 			}
 		}
 	}
+	if len(p.Plan.Learned) < ck.Learned {
+		return fmt.Sprintf("%d rounds learned, want at least %d", len(p.Plan.Learned), ck.Learned)
+	}
 	if ck.Compounding {
 		found := false
 		for _, it := range nodes {
@@ -503,4 +507,49 @@ func planMismatch(h *Harness, ck Check, p portfolio.Project, an planning.Analysi
 		}
 	}
 	return ""
+}
+
+// CapabilityScore summarises results by capability: the share of runs that
+// passed, and how many cases passed every time (reliability — what matters
+// for a bot that runs things on its own).
+type CapabilityScore struct {
+	Capability      string
+	Runs, Passed    int
+	Cases, Reliable int
+}
+
+func ScoreByCapability(results []Result) []CapabilityScore {
+	type agg struct {
+		runs, passed int
+		cases        map[string]bool // case → passed every run so far
+	}
+	by := map[string]*agg{}
+	for _, r := range results {
+		id, _, _ := strings.Cut(r.ID, "#")
+		for _, c := range r.Capabilities {
+			x := by[c]
+			if x == nil {
+				x = &agg{cases: map[string]bool{}}
+				by[c] = x
+			}
+			x.runs++
+			if r.Pass {
+				x.passed++
+			}
+			prev, seen := x.cases[id]
+			x.cases[id] = (prev || !seen) && r.Pass
+		}
+	}
+	var out []CapabilityScore
+	for c, x := range by {
+		s := CapabilityScore{Capability: c, Runs: x.runs, Passed: x.passed, Cases: len(x.cases)}
+		for _, ok := range x.cases {
+			if ok {
+				s.Reliable++
+			}
+		}
+		out = append(out, s)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Capability < out[j].Capability })
+	return out
 }

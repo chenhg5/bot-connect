@@ -12,6 +12,7 @@ import (
 
 	"github.com/chenhg5/bot-connect/internal/domain/insight"
 	"github.com/chenhg5/bot-connect/internal/domain/planning"
+	"github.com/chenhg5/bot-connect/internal/domain/portfolio"
 	. "github.com/chenhg5/bot-connect/internal/domain/shared"
 	"github.com/chenhg5/bot-connect/internal/domain/world"
 )
@@ -266,7 +267,7 @@ func (t DefaultTiering) Tier(scored []Scored) Agenda {
 func committed(w *world.World) *world.World {
 	hide := false
 	for _, p := range w.Projects {
-		hide = hide || !p.Plan.Stage.Committed()
+		hide = hide || !p.Plan.Stage.Committed() || p.Plan.Kind == portfolio.KindExplore
 	}
 	if !hide {
 		return w
@@ -274,8 +275,12 @@ func committed(w *world.World) *world.World {
 	c := *w
 	c.Items = make(map[ItemID]planning.Item, len(w.Items))
 	for id, it := range w.Items {
-		if p, ok := w.Projects[it.Project]; ok && !p.Plan.Stage.Committed() && it.Assignment == "" {
+		p, ok := w.Projects[it.Project]
+		if ok && !p.Plan.Stage.Committed() && it.Assignment == "" {
 			continue
+		}
+		if ok && p.Plan.Kind == portfolio.KindExplore {
+			it.Due = nil // exploring has a timebox, not deadlines: redoing is progress, not delay
 		}
 		c.Items[id] = it
 	}
