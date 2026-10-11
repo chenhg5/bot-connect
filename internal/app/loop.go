@@ -16,7 +16,7 @@ import (
 const (
 	OfferNudgeAfter  = 4 * time.Hour  // no answer to an offer → reminder
 	OfferExpireAfter = 48 * time.Hour // still nothing → expired, back to planning
-	EscalateAfter    = 2 * time.Hour  // a high signal nobody handled → straight to the owner
+	EscalateAfter    = 2 * time.Hour  // a high signal nobody handled → straight to the principal
 )
 
 // Run ticks the control loop until ctx ends.
@@ -38,6 +38,7 @@ func (a *App) Run(ctx context.Context, every time.Duration) {
 // what to do about a problem; it makes sure someone hears about it in time.
 func (a *App) Tick(ctx context.Context) {
 	a.followUps(ctx)
+	a.advancePlans(ctx)
 	a.raiseFindings(ctx)
 	a.tickInbox(ctx)
 }
@@ -52,7 +53,7 @@ func (a *App) followUps(ctx context.Context) {
 	for _, id := range ids {
 		as := w.Assignments[id]
 		wk := w.Workers[as.Worker]
-		if !as.Open() || wk.Kind != workforce.Human || wk.ID == Owner {
+		if !as.Open() || wk.Kind != workforce.Human || wk.ID == Principal {
 			continue
 		}
 		note := ""

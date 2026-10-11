@@ -23,7 +23,7 @@ cp config.example.toml config.toml   # fill [brain], [feishu], [[workers]]
 bot-connect config init                    # ~/.bot-connect/config.toml — edit it
 bot-connect config validate
 bot-connect bot run                        # Feishu
-bot-connect bot run --console              # chat from the terminal (you are owner; "@jack hi" = visitor)
+bot-connect bot run --console              # chat from the terminal (you are principal; "@jack hi" = visitor)
 ```
 
 Requires `claude` and/or `codex` CLIs on PATH, logged in.
@@ -46,7 +46,7 @@ Inside a brain turn, `bot-connect tool list` lists the tools and `bot-connect to
 
 ## Feishu setup
 
-Pick one. Either way the bot is owned by whoever owns the Feishu app (leave `owners` empty), and it uses
+Pick one. Either way the bot is owned by whoever owns the Feishu app (leave `principals` empty), and it uses
 the WebSocket long connection: no public callback URL, no Verification Token / Encrypt Key.
 
 **A. Scan a QR code (no other tools):**
@@ -55,7 +55,7 @@ the WebSocket long connection: no public callback URL, no Verification Token / E
 bot-connect feishu setup
 ```
 
-Creates a bot, writes `app_id` / `app_secret` into the config, and sets the scanner as owner.
+Creates a bot, writes `app_id` / `app_secret` into the config, and sets the scanner as principal.
 
 **B. Use an app held by lark-cli (credentials never leave lark-cli):**
 
@@ -75,10 +75,10 @@ then in the config: `[feishu] larkcli_profile = "bot-connect"`.
 | `im:message:send_as_bot` | reply |
 | `im:message.reactions:write_only` | optional: the "received" emoji |
 | `contact:user.base:readonly` | optional: senders' names (otherwise ids only) |
-| `application:application:self_manage` | optional: read the app owner to default `owners` |
+| `application:application:self_manage` | optional: read the app owner to default `principals` |
 
-**Check it works:** the log shows `feishu bot ready` (or `lark-cli bot ready`), then `owner defaults to
-the app owner`. DM the bot `/whoami`: it should say `role: owner`. No reply? Check the version is
+**Check it works:** the log shows `feishu bot ready` (or `lark-cli bot ready`), then `principal defaults to
+the app owner`. DM the bot `/whoami`: it should say `role: principal`. No reply? Check the version is
 published, the bot is in the app's availability scope, and no other process (e.g. cc-connect) holds the
 same app's long connection. In groups the bot only answers when @-mentioned.
 
@@ -109,7 +109,7 @@ Ask the bot in chat — "每个工作日 9 点看一下 CI，红了告诉我", "
 job (`schedule_create`); when it's due, the instruction is posted back into that conversation and the brain
 carries it out (answers, or delegates to a worker). Cron, `@every 2h`, `@daily`, `TZ=…` prefixes and
 one-shot `@once 2h` / `@once 15:00` are supported; minimum interval 5 minutes; a run is skipped while the
-previous one is still being handled. Only owners/admins can create jobs, the creator's role is re-checked at
+previous one is still being handled. Only principals/admins can create jobs, the creator's role is re-checked at
 every run, and every run is in the audit log. Inspect and control them with `bot-connect schedule …`.
 
 ## Managing workers
@@ -121,7 +121,7 @@ given roots. In chat the brain then routes each piece of work: continuing work g
 the context; new independent work goes to an idle worker that fits, or to a new one created from the
 best-fitting (least-privileged) template; finished workers are retired (`worker_retire`, or automatically
 after `idle_ttl`). The brain can never raise a worker's permissions — they come from the template — and
-`max_instances` caps how many exist. Only owner/admin turns can create workers.
+`max_instances` caps how many exist. Only principal/admin turns can create workers.
 
 ## Chat commands
 
@@ -132,7 +132,7 @@ after `idle_ttl`). The brain can never raise a worker's permissions — they com
 ```
 cmd/bot-connect      entry
 internal/hub         access layer: lanes, priority, coalescing, least-privilege turns, history
-internal/identity    who sent this: User/Role, Directory, OwnerSource, Policy, cached Resolver
+internal/identity    who sent this: User/Role, Directory, PrincipalSource, Policy, cached Resolver
 internal/audit       structured event log (Sink interface, JSONL default)
 internal/brain       brain adapters (claudecode / codex / command) + prompt & context injection
 internal/worker      worker sessions, task queue, claude/codex runners

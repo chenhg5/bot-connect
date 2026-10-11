@@ -29,14 +29,14 @@ func (f ReacherFunc) Send(ctx context.Context, address, text string, u workforce
 
 // Route kinds this package knows by name; others can be registered.
 const (
-	FeishuDM  workforce.RouteKind = "feishu_dm"
-	OwnerChat workforce.RouteKind = "owner_chat"
+	FeishuDM      workforce.RouteKind = "feishu_dm"
+	PrincipalChat workforce.RouteKind = "principal_chat"
 )
 
 type Driver struct {
 	Clock    Clock
 	Reachers map[workforce.RouteKind]Reacher
-	// Approved reports whether the owner approved using an approval-gated
+	// Approved reports whether the principal approved using an approval-gated
 	// route (phone calls…) for this message; nil = never.
 	Approved func(w workforce.Worker, r workforce.Route, text string) bool
 }
@@ -100,7 +100,7 @@ func (d *Driver) send(ctx context.Context, w workforce.Worker, text string, u wo
 	for i := len(routes) - 1; i >= 0; i-- {
 		r := routes[i]
 		if r.Approval && (d.Approved == nil || !d.Approved(w, r, text)) {
-			errs = append(errs, string(r.Kind)+": needs the owner's approval")
+			errs = append(errs, string(r.Kind)+": needs the principal's approval")
 			continue
 		}
 		rc := d.Reachers[r.Kind]
@@ -130,7 +130,7 @@ func OfferText(w workforce.Worker, a delegation.Assignment) string {
 	case delegation.Review:
 		fmt.Fprintf(&b, "✅ **请帮忙确认 %s**：%s\n", a.ID, a.Brief.Goal)
 	default:
-		if w.ID == Owner {
+		if w.ID == Principal {
 			fmt.Fprintf(&b, "📋 **给你的待办 %s**：%s\n", a.ID, a.Brief.Goal)
 		} else {
 			fmt.Fprintf(&b, "📋 **请求 %s**：%s\n", a.ID, a.Brief.Goal)
@@ -160,7 +160,7 @@ func OfferText(w workforce.Worker, a delegation.Assignment) string {
 		b.WriteString("\n")
 	case a.Kind.Answered():
 		b.WriteString("\n直接回复即可。\n")
-	case w.ID == Owner:
+	case w.ID == Principal:
 		b.WriteString("\n做完了告诉我（附上结果）；做不了或要改时间也直接说。\n")
 	default:
 		b.WriteString("\n直接回复我：**接下** / **不接**（说下原因）/ **改时间**（给个时间）。有问题也可以直接问。\n")

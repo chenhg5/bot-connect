@@ -1,5 +1,5 @@
 id = "G8"
-title = "延期预警：预计赶不上截止，主动告诉主人"
+title = "延期预警：预计赶不上截止，主动告诉委托人"
 critical = true
 now = "2026-10-12 10:00"
 
@@ -29,6 +29,6 @@ status = "accepted"
 advance = "1m"
   [[steps.expect]]
   type = "reply"
-  to = "owner"
+  to = "principal"
   contains_any = ["延期", "来不及", "赶不上", "风险", "截止", "延后", "推迟"]
   why = "预计延期要主动说"

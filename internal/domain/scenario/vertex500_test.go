@@ -20,8 +20,8 @@ import (
 )
 
 var (
-	now   = time.Date(2026, 10, 14, 14, 0, 0, 0, time.UTC) // Tuesday 14:00
-	owner = Actor{UserID: "u-owner", Worker: Owner, Role: RoleOwner}
+	now       = time.Date(2026, 10, 14, 14, 0, 0, 0, time.UTC) // Tuesday 14:00
+	principal = Actor{UserID: "u-principal", Worker: Principal, Role: RolePrincipal}
 )
 
 func day(d int) *time.Time { t := time.Date(2026, 10, d, 0, 0, 0, 0, time.UTC); return &t }
@@ -49,18 +49,18 @@ func agent(id WorkerID, caps ...string) workforce.Worker {
 func build(t *testing.T) *world.World {
 	t.Helper()
 	w := world.New(now)
-	org := must(portfolio.New(OrgProject, "", "公司", P2, Period{}, now, owner))
-	org.SetPolicy(portfolio.ApprovalRule{Action: "deploy:prod", Approvers: []string{"oncall"}}, now, owner)
-	org.SetPolicy(portfolio.ApprovalRule{Action: "merge:main", Scope: "repo:tapnow", Approvers: []string{"code_owner"}}, now, owner)
-	org.AddMember(portfolio.Membership{Worker: "lisi", Role: "code_owner", Duties: []string{"媒体服务"}}, now, owner)
-	p3 := must(portfolio.New("P3", "", "TapNow 稳定性", P0, Period{}, now, owner))
-	p3.AddMember(portfolio.Membership{Worker: "zhaoliu", Role: "oncall", Period: Period{From: day(6), Until: day(13)}}, now, owner)
-	p3.AddMember(portfolio.Membership{Worker: "wangwu", Role: "oncall", Period: Period{From: day(13), Until: day(20)}}, now, owner)
-	p3.AddMember(portfolio.Membership{Worker: "jerry", Role: "业务方", Duties: []string{"报障", "验收效果"}}, now, owner)
+	org := must(portfolio.New(OrgProject, "", "公司", P2, Period{}, now, principal))
+	org.SetPolicy(portfolio.ApprovalRule{Action: "deploy:prod", Approvers: []string{"oncall"}}, now, principal)
+	org.SetPolicy(portfolio.ApprovalRule{Action: "merge:main", Scope: "repo:tapnow", Approvers: []string{"code_owner"}}, now, principal)
+	org.AddMember(portfolio.Membership{Worker: "lisi", Role: "code_owner", Duties: []string{"媒体服务"}}, now, principal)
+	p3 := must(portfolio.New("P3", "", "TapNow 稳定性", P0, Period{}, now, principal))
+	p3.AddMember(portfolio.Membership{Worker: "zhaoliu", Role: "oncall", Period: Period{From: day(6), Until: day(13)}}, now, principal)
+	p3.AddMember(portfolio.Membership{Worker: "wangwu", Role: "oncall", Period: Period{From: day(13), Until: day(20)}}, now, principal)
+	p3.AddMember(portfolio.Membership{Worker: "jerry", Role: "业务方", Duties: []string{"报障", "验收效果"}}, now, principal)
 	w.Projects[OrgProject], w.Projects["P3"] = org, p3
 
 	for _, wk := range []workforce.Worker{
-		person(Owner, true),
+		person(Principal, true),
 		person("lisi", true, workforce.Authority{Action: "merge:main", Scope: "repo:tapnow"}),
 		person("wangwu", true), person("zhaoliu", true), person("jerry", true),
 		person("bystander", false),
@@ -95,32 +95,32 @@ func TestStaffingAgentFirstAndApprovalsByRoleAndTime(t *testing.T) {
 	w := build(t)
 	st := insight.DefaultStaffing()
 	logs := workforce.ParseCapability("gcloud-logging:read")
-	if c := st.Candidates(insight.Need{Project: "P3", Text: "查日志定位 500", Capability: &logs, By: owner}, w); len(c) != 1 || c[0].Worker != "ops-reader" {
+	if c := st.Candidates(insight.Need{Project: "P3", Text: "查日志定位 500", Capability: &logs, By: principal}, w); len(c) != 1 || c[0].Worker != "ops-reader" {
 		t.Fatalf("logs → ops-reader only, got %v", names(c))
 	}
 	repo := workforce.ParseCapability("repo:tapnow:write")
-	c := st.Candidates(insight.Need{Project: "P3", Text: "修复 view_media 重试与降级", Capability: &repo, By: owner}, w)
+	c := st.Candidates(insight.Need{Project: "P3", Text: "修复 view_media 重试与降级", Capability: &repo, By: principal}, w)
 	if c[0].Worker != "tapnow-dev" || !strings.Contains(strings.Join(c[1].Reasons, ";"), "agent 也能做") {
 		t.Fatalf("agent first, person demoted with a reason: %+v", c)
 	}
-	merge := st.Candidates(insight.Need{Project: "P3", Kind: NeedApproval, Action: "merge:main", Scope: "repo:tapnow", By: owner}, w)
+	merge := st.Candidates(insight.Need{Project: "P3", Kind: NeedApproval, Action: "merge:main", Scope: "repo:tapnow", By: principal}, w)
 	if merge[0].Worker != "lisi" {
-		t.Fatalf("merge approval → code owner, got %v", names(merge))
+		t.Fatalf("merge approval → code principal, got %v", names(merge))
 	}
-	deploy := st.Candidates(insight.Need{Project: "P3", Kind: NeedApproval, Action: "deploy:prod", By: owner}, w)
+	deploy := st.Candidates(insight.Need{Project: "P3", Kind: NeedApproval, Action: "deploy:prod", By: principal}, w)
 	if deploy[0].Worker != "wangwu" {
 		t.Fatalf("deploy approval → this week's on-call, got %v", names(deploy))
 	}
 	w.Now = *day(8)
-	if d := st.Candidates(insight.Need{Project: "P3", Kind: NeedApproval, Action: "deploy:prod", By: owner}, w); d[0].Worker != "zhaoliu" {
+	if d := st.Candidates(insight.Need{Project: "P3", Kind: NeedApproval, Action: "deploy:prod", By: principal}, w); d[0].Worker != "zhaoliu" {
 		t.Fatalf("a week earlier the on-call was zhaoliu, got %v", names(d))
 	}
 	w.Now = now
-	conf := st.Candidates(insight.Need{Project: "P3", Kind: NeedJudgment, Text: "验收效果", By: owner}, w)
+	conf := st.Candidates(insight.Need{Project: "P3", Kind: NeedJudgment, Text: "验收效果", By: principal}, w)
 	if conf[0].Worker != "jerry" {
 		t.Fatalf("reporter confirms, got %v", names(conf))
 	}
-	call := st.Candidates(insight.Need{Project: "P3", Kind: NeedPhysical, Text: "给客户打电话", By: owner}, w)
+	call := st.Candidates(insight.Need{Project: "P3", Kind: NeedPhysical, Text: "给客户打电话", By: principal}, w)
 	for _, x := range call {
 		if x.Agent {
 			t.Fatal("agents can't make calls")
@@ -133,7 +133,7 @@ func TestStaffingAgentFirstAndApprovalsByRoleAndTime(t *testing.T) {
 	s := w.State("wangwu")
 	s.Record(workforce.Fact{Dim: workforce.Presence, Value: "away", Detail: "病假", Source: workforce.Declared, At: now})
 	w.States["wangwu"] = s
-	d := st.Candidates(insight.Need{Project: "P3", Kind: NeedApproval, Action: "deploy:prod", By: owner}, w)
+	d := st.Candidates(insight.Need{Project: "P3", Kind: NeedApproval, Action: "deploy:prod", By: principal}, w)
 	if !containsExcluded(d, "wangwu") || !strings.Contains(d[0].Excluded, "病假") {
 		t.Fatalf("unavailable approver must be excluded: %+v", d)
 	}
@@ -153,7 +153,7 @@ func plan(t *testing.T, w *world.World) {
 	t.Helper()
 	due := time.Date(2026, 10, 14, 23, 0, 0, 0, time.UTC)
 	mk := func(id ItemID, est time.Duration, needs []planning.Need, deps ...ItemID) planning.Item {
-		it := must(planning.New(id, planning.Spec{Project: "P3", Title: string(id), Due: &due, Estimate: est, Needs: needs, DependsOn: deps}, now, owner))
+		it := must(planning.New(id, planning.Spec{Project: "P3", Title: string(id), Due: &due, Estimate: est, Needs: needs, DependsOn: deps}, now, principal))
 		if err := w.Graph().Validate(id, "P3", "", deps); err != nil {
 			t.Fatal(err)
 		}
@@ -170,22 +170,22 @@ func plan(t *testing.T, w *world.World) {
 	i31 := w.Items["I31"]
 	i31.Complete(true, now, System("rule"))
 	w.Items["I31"] = i31
-	a := must(delegation.New(delegation.Offer{ID: "A32", Item: "I32", Project: "P3", Worker: "tapnow-dev", Brief: delegation.Brief{Goal: "修复", Estimate: 8 * time.Hour}}, now.Add(-2*time.Hour), owner))
+	a := must(delegation.New(delegation.Offer{ID: "A32", Item: "I32", Project: "P3", Worker: "tapnow-dev", Brief: delegation.Brief{Goal: "修复", Estimate: 8 * time.Hour}}, now.Add(-2*time.Hour), principal))
 	a.Accept(nil, "", now.Add(-2*time.Hour), System("driver:agent"))
 	w.Assignments[a.ID] = a
 	i32 := w.Items["I32"]
-	i32.Attach("A32", "tapnow-dev", now, owner)
+	i32.Attach("A32", "tapnow-dev", now, principal)
 	i32.Progressed(now.Add(-2 * time.Hour))
 	w.Items["I32"] = i32
 
 	// History: tapnow-dev usually takes 1.5× its estimates.
 	for i, id := range []AssignmentID{"H1", "H2"} {
 		start := now.Add(-time.Duration(48+i*24) * time.Hour)
-		h := must(delegation.New(delegation.Offer{ID: id, Item: "old", Project: "P3", Worker: "tapnow-dev", Brief: delegation.Brief{Goal: "old", Estimate: 2 * time.Hour}}, start, owner))
+		h := must(delegation.New(delegation.Offer{ID: id, Item: "old", Project: "P3", Worker: "tapnow-dev", Brief: delegation.Brief{Goal: "old", Estimate: 2 * time.Hour}}, start, principal))
 		d := System("driver:agent")
 		h.Accept(nil, "", start, d)
 		h.Deliver("ok", nil, start.Add(3*time.Hour), d)
-		h.Verify("", start.Add(3*time.Hour), owner)
+		h.Verify("", start.Add(3*time.Hour), principal)
 		w.Assignments[id] = h
 	}
 }
@@ -240,9 +240,9 @@ func TestWaitingOnUsAndQuietWhenAllIsWell(t *testing.T) {
 		t.Fatalf("all quiet expected, got %+v %+v", keys(ag.Now), keys(ag.Today))
 	}
 	due := now.Add(10 * time.Hour)
-	it := must(planning.New("I40", planning.Spec{Project: "P3", Title: "设计稿", Due: &due}, now, owner))
+	it := must(planning.New("I40", planning.Spec{Project: "P3", Title: "设计稿", Due: &due}, now, principal))
 	w.Items["I40"] = it
-	a := must(delegation.New(delegation.Offer{ID: "A40", Item: "I40", Project: "P3", Worker: "jerry", ToPerson: true, Why: NeedJudgment, Brief: delegation.Brief{Goal: "确认"}}, now.Add(-5*time.Hour), owner))
+	a := must(delegation.New(delegation.Offer{ID: "A40", Item: "I40", Project: "P3", Worker: "jerry", ToPerson: true, Why: NeedJudgment, Brief: delegation.Brief{Goal: "确认"}}, now.Add(-5*time.Hour), principal))
 	j := Actor{UserID: "u-jerry", Worker: "jerry"}
 	a.Accept(nil, "", now.Add(-5*time.Hour), j)
 	a.Deliver("ok", nil, now.Add(-4*time.Hour), j)

@@ -22,8 +22,8 @@ func TestResolveRolesAndCache(t *testing.T) {
 	r.AddDirectory("feishu", d)
 
 	me := r.Resolve(context.Background(), User{Platform: "feishu", ID: "ou_me"})
-	if me.Role != RoleOwner {
-		t.Fatalf("owner by id: %+v", me)
+	if me.Role != RolePrincipal {
+		t.Fatalf("principal by id: %+v", me)
 	}
 	jack := r.Resolve(context.Background(), User{Platform: "feishu", ID: "ou_jack"})
 	if jack.Role != RoleAdmin || jack.Name != "Jack" || !jack.Resolved {

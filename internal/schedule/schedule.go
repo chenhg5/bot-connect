@@ -3,7 +3,7 @@
 // it, as a message the brain handles like any other (answer, or delegate).
 //
 // Schedules are a persistence channel (an instruction that fires later,
-// unattended), so: only owners/admins create them, the creator's role is
+// unattended), so: only principals/admins create them, the creator's role is
 // re-checked on every run, and everything is recorded in the audit log.
 package schedule
 
@@ -187,7 +187,7 @@ func (s *Store) Create(j Job) (Job, error) {
 		return Job{}, fmt.Errorf("prompt is empty")
 	}
 	if !j.CreatedBy.Privileged() {
-		return Job{}, fmt.Errorf("permission denied: only the owner or an admin can create schedules")
+		return Job{}, fmt.Errorf("permission denied: only the principal or an admin can create schedules")
 	}
 	now := s.now()
 	next, once, err := Next(j.Spec, now)
@@ -296,7 +296,7 @@ func (s *Store) Tick() {
 	for _, j := range due {
 		switch {
 		case s.Authorize != nil && !s.Authorize(*j):
-			j.Enabled, j.LastStatus = false, "disabled: creator is no longer owner/admin"
+			j.Enabled, j.LastStatus = false, "disabled: creator is no longer principal/admin"
 			events = append(events, fire{*j, "disabled"})
 		case j.Running:
 			j.LastStatus = "skipped_running"

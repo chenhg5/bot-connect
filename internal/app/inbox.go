@@ -10,6 +10,7 @@ import (
 	"github.com/chenhg5/bot-connect/internal/domain/attention"
 	"github.com/chenhg5/bot-connect/internal/domain/delegation"
 	"github.com/chenhg5/bot-connect/internal/domain/inbox"
+	"github.com/chenhg5/bot-connect/internal/domain/portfolio"
 	. "github.com/chenhg5/bot-connect/internal/domain/shared"
 	"github.com/chenhg5/bot-connect/internal/domain/workforce"
 )
@@ -82,13 +83,20 @@ func (a *App) Ingest(ctx context.Context, sp SignalSpec) (inbox.Signal, bool, er
 			if r.Intent != "" {
 				draft.Reason = sp.Reason + ":" + r.Intent
 			}
+			draft.Hints, draft.NeedsPlan = r.Hints, r.NeedsPlan
+			if !r.NeedsPlan && sp.Actor.Privileged() {
+				if g, ok := a.unplannedGoal(); ok {
+					draft.NeedsPlan = true
+					draft.Hints = append(draft.Hints, fmt.Sprintf("%s 的目标（%s）还没有计划。约束够用就 plan draft；哪个方向最好是调研要回答的问题，不要让委托人替你回答。", g.ID, oneLine(g.Body, 40)))
+				}
+			}
 		} else if a.Log != nil {
 			a.Log.Info("triage failed; using the policy", "err", err)
 		}
 	}
 	// What needs no decision lands without waking the brain: a person
 	// accepting the one request waiting for their answer.
-	if tri.Action == "accept" && tri.Confidence >= 0.9 && sp.Actor.Worker != "" && sp.Actor.Worker != Owner {
+	if tri.Action == "accept" && tri.Confidence >= 0.9 && sp.Actor.Worker != "" && sp.Actor.Worker != Principal {
 		if as, ok := a.onlyOffer(sp.Actor.Worker); ok {
 			if err := a.Report(ctx, sp.Actor, as.ID, Report{Action: "accept", Note: sp.Body}); err == nil {
 				draft.Status, draft.Note, draft.Wake = inbox.Handled, "landed by triage: accepted "+string(as.ID), "ignore"
@@ -239,6 +247,9 @@ func FocusText(sigs []inbox.Signal) string {
 		b.WriteString("\n")
 		body := firstNonEmpty(x.Body, x.Summary)
 		b.WriteString(body + "\n")
+		for _, h := range x.Hints {
+			b.WriteString("〔判断〕" + h + "\n")
+		}
 	}
 	return strings.TrimSpace(b.String())
 }
@@ -333,7 +344,7 @@ func (a *App) OpenContacts(who WorkerID) []Contact {
 }
 
 // Relay passes something from an isolated conversation (a colleague's
-// request, a reply to a contact) to the owner side as a signal; replies to
+// request, a reply to a contact) to the principal side as a signal; replies to
 // open contacts close them.
 func (a *App) Relay(ctx context.Context, from Actor, fromName, conv, msgID, text string) (inbox.Signal, error) {
 	var about inbox.Refs
@@ -397,7 +408,7 @@ func (a *App) tickInbox(ctx context.Context) {
 		return evs, nil
 	})
 	for _, x := range escalate {
-		a.escalateToOwner(ctx, x)
+		a.escalateToPrincipal(ctx, x)
 	}
 	if batch || len(due) > 0 {
 		var ids []string
@@ -412,16 +423,16 @@ func (a *App) tickInbox(ctx context.Context) {
 	}
 }
 
-func (a *App) escalateToOwner(ctx context.Context, x inbox.Signal) {
-	var owner workforce.Worker
+func (a *App) escalateToPrincipal(ctx context.Context, x inbox.Signal) {
+	var principal workforce.Worker
 	var ok bool
-	a.Store.Read(func(s *State) { owner, ok = s.Workers[Owner] })
+	a.Store.Read(func(s *State) { principal, ok = s.Workers[Principal] })
 	if !ok {
 		return
 	}
-	if d := a.driverFor(owner); d != nil {
+	if d := a.driverFor(principal); d != nil {
 		text := fmt.Sprintf("⚠️ 已 %s 没有处理：%s（信号 %s）", EscalateAfter, x.Summary, x.ID)
-		_ = d.Notify(ctx, owner, delegationStub(x.Refs), Notice{Kind: "message", Text: text, Urgency: workforce.Urgent})
+		_ = d.Notify(ctx, principal, delegationStub(x.Refs), Notice{Kind: "message", Text: text, Urgency: workforce.Urgent})
 	}
 }
 
@@ -509,4 +520,28 @@ func (a *App) onlyOffer(w WorkerID) (delegation.Assignment, bool) {
 		return delegation.Assignment{}, false
 	}
 	return found[0], true
+}
+
+// unplannedGoal: a goal or multi-step request from the principal side in the
+// last day, with no plan drafted since.
+func (a *App) unplannedGoal() (inbox.Signal, bool) {
+	var goal inbox.Signal
+	found := false
+	a.Store.Read(func(s *State) {
+		now := a.now()
+		for _, x := range s.Signals {
+			if x.NeedsPlan && now.Sub(x.CreatedAt) < 24*time.Hour && (!found || x.CreatedAt.After(goal.CreatedAt)) {
+				goal, found = x, true
+			}
+		}
+		if !found {
+			return
+		}
+		for _, p := range s.Projects {
+			if p.Plan.Stage != portfolio.NoPlan && !p.Plan.UpdatedAt.Before(goal.CreatedAt) {
+				found = false
+			}
+		}
+	})
+	return goal, found
 }

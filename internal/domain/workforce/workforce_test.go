@@ -33,19 +33,19 @@ func TestCapabilityAndAuthority(t *testing.T) {
 }
 
 func TestConsent(t *testing.T) {
-	owner := Actor{UserID: "u1", Role: RoleOwner}
+	principal := Actor{UserID: "u1", Role: RolePrincipal}
 	member := Actor{UserID: "u2", Role: RoleMember}
 	p := Worker{ID: "zs", Kind: Human, Trust: External}
-	if p.AcceptsFrom(owner, mon10) {
+	if p.AcceptsFrom(principal, mon10) {
 		t.Fatal("no consent, no work")
 	}
 	p.Consent = Consent{Given: true}
-	if !p.AcceptsFrom(owner, mon10) || p.AcceptsFrom(member, mon10) {
-		t.Fatal("default consent is from the owner only")
+	if !p.AcceptsFrom(principal, mon10) || p.AcceptsFrom(member, mon10) {
+		t.Fatal("default consent is from the principal only")
 	}
 	agent := Worker{ID: "a", Kind: AgentSession, Trust: Controlled}
-	if !agent.AcceptsFrom(owner, mon10) || agent.AcceptsFrom(member, mon10) {
-		t.Fatal("controlled agents take work from owner/admin")
+	if !agent.AcceptsFrom(principal, mon10) || agent.AcceptsFrom(member, mon10) {
+		t.Fatal("controlled agents take work from principal/admin")
 	}
 }
 

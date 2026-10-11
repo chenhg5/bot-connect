@@ -62,14 +62,14 @@ func TestMemberGetsPrivateInstance(t *testing.T) {
 		t.Fatalf("bob's worker list leaks others' workers:\n%s", list)
 	}
 	if _, err := r.Call(context.Background(), alice, "agent_task", map[string]any{"worker": "mine", "instruction": "x"}); err == nil {
-		t.Fatal("a member must not use the owner's shared worker")
+		t.Fatal("a member must not use the principal's shared worker")
 	}
 	if _, err := os.Stat(filepath.Join(shared, "ran.txt")); err == nil {
 		t.Fatal("member work must not touch the shared work_dir")
 	}
 }
 
-func TestReadonlyAskAndOwnerOversight(t *testing.T) {
+func TestReadonlyAskAndPrincipalOversight(t *testing.T) {
 	r, _, _ := isoSetup(t)
 	alice := tcFor("ou_alice", identity.RoleMember)
 	if _, err := r.Call(context.Background(), alice, "agent_task", map[string]any{"worker": "docs", "instruction": "what does X do?"}); err != nil {
@@ -82,12 +82,12 @@ func TestReadonlyAskAndOwnerOversight(t *testing.T) {
 	if _, err := r.Call(context.Background(), visitor, "agent_task", map[string]any{"worker": "docs", "instruction": "?"}); err == nil {
 		t.Fatal("visitors may not ask unless ask_roles includes visitor")
 	}
-	owner := tcFor("ou_me", identity.RoleOwner)
+	principal := tcFor("ou_me", identity.RolePrincipal)
 	if _, err := r.Call(context.Background(), alice, "agent_task", map[string]any{"worker": "proj", "instruction": "x"}); err != nil {
 		t.Fatal(err)
 	}
-	if out, err := r.Call(context.Background(), owner, "read_worker", map[string]any{"name": "proj@ou_alice"}); err != nil || !strings.Contains(out, "proj@ou_alice") {
-		t.Fatalf("the owner keeps oversight of member instances: %v", err)
+	if out, err := r.Call(context.Background(), principal, "read_worker", map[string]any{"name": "proj@ou_alice"}); err != nil || !strings.Contains(out, "proj@ou_alice") {
+		t.Fatalf("the principal keeps oversight of member instances: %v", err)
 	}
 }
 

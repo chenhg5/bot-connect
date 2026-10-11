@@ -215,14 +215,14 @@ func redactConfig(cfg *config.Config) any {
 // ---------- bot ----------
 
 type botRow struct {
-	Name    string   `json:"name"`
-	Channel string   `json:"channel"`
-	Brain   string   `json:"brain"`
-	Owners  []string `json:"owners"`
-	Admins  []string `json:"admins,omitempty"`
-	Members []string `json:"members,omitempty"`
-	Workers []string `json:"workers"`
-	Dir     string   `json:"dir"`
+	Name       string   `json:"name"`
+	Channel    string   `json:"channel"`
+	Brain      string   `json:"brain"`
+	Principals []string `json:"principals"`
+	Admins     []string `json:"admins,omitempty"`
+	Members    []string `json:"members,omitempty"`
+	Workers    []string `json:"workers"`
+	Dir        string   `json:"dir"`
 }
 
 func botRows(cfg *config.Config) []botRow {
@@ -239,15 +239,15 @@ func botRows(cfg *config.Config) []botRow {
 		if b.Brain.Model != "" {
 			brain += " / " + b.Brain.Model
 		}
-		owners := b.Owners
-		if len(owners) == 0 {
-			owners = []string{"(the Feishu app's owner)"}
+		principals := b.Principals
+		if len(principals) == 0 {
+			principals = []string{"(the Feishu app's owner)"}
 		}
 		ws := b.Workers
 		if len(ws) == 0 {
 			ws = []string{"*"}
 		}
-		out = append(out, botRow{Name: b.Name, Channel: ch, Brain: brain, Owners: owners, Admins: b.Admins, Members: b.Members, Workers: ws, Dir: b.Dir})
+		out = append(out, botRow{Name: b.Name, Channel: ch, Brain: brain, Principals: principals, Admins: b.Admins, Members: b.Members, Workers: ws, Dir: b.Dir})
 	}
 	return out
 }
@@ -288,12 +288,12 @@ func botCmd() *cli.Command {
 			Desc: "Logs go to stderr (to <data_dir>/bot-connect.log with --console). Everything the bots do is\nrecorded in <data_dir>/audit/ — see: bot-connect audit list.",
 			Examples: []string{
 				"bot-connect bot run",
-				"bot-connect bot run --console                 # chat from this terminal as the owner",
+				"bot-connect bot run --console                 # chat from this terminal as the principal",
 				"bot-connect bot run --only team-bot --config ./config.toml",
 			},
 			Flags: []cli.Flag{configFlag,
 				{Name: "only", Type: cli.List, Desc: "run only this bot"},
-				{Name: "console", Type: cli.Bool, Desc: "chat from this terminal as the owner (\"@name text\" speaks as a visitor)"},
+				{Name: "console", Type: cli.Bool, Desc: "chat from this terminal as the principal (\"@name text\" speaks as a visitor)"},
 				{Name: "console-bot", Type: cli.String, Desc: "with --console: which bot the terminal talks to (default: first)"},
 			},
 			Run: func(c *cli.Ctx) error {
@@ -519,7 +519,7 @@ func scheduleCmd() *cli.Command {
 				return c.Out(map[string]any{"action": name, "schedule": j}, func(w io.Writer) { fmt.Fprintf(w, "%s: %s\n", name, j.ID) })
 			}}
 	}
-	return &cli.Command{Name: "schedule", Summary: "scheduled jobs (created in chat by the owner/admins)",
+	return &cli.Command{Name: "schedule", Summary: "scheduled jobs (created in chat by the principal/admins)",
 		Desc: "Jobs are created in chat (\"每个工作日 9 点检查 CI\"). A running bot picks up changes made here.",
 		Children: []*cli.Command{
 			{
@@ -587,13 +587,13 @@ func sessionCmd() *cli.Command {
 						return err
 					}
 					cat = session.NewCatalog(session.NewClaudeStore(""), session.NewCodexStore(""), session.NewCodexStore(wm.CodexHome()))
-					owner := worker.Scope{Caller: identity.User{ID: "local", Role: identity.RoleOwner}}
+					principal := worker.Scope{Caller: identity.User{ID: "local", Role: identity.RolePrincipal}}
 					seen := map[string]bool{}
-					for _, root := range wm.Roots(owner) {
+					for _, root := range wm.Roots(principal) {
 						if c.Str("worker") != "" && root != c.Str("worker") {
 							continue
 						}
-						p, _ := wm.Policy(root, owner)
+						p, _ := wm.Policy(root, principal)
 						if c.Str("agent") != "" && p.Agent != c.Str("agent") {
 							continue
 						}
@@ -743,7 +743,7 @@ func feishuCmd() *cli.Command {
 	return &cli.Command{Name: "feishu", Summary: "connect a bot to Feishu / Lark", Children: []*cli.Command{
 		{
 			Name: "setup", Summary: "create a Feishu bot by scanning a QR code and write it into the config", Effects: true,
-			Desc:     "The QR code and progress go to stderr. On success app_id/app_secret are written into [feishu]\nand the person who scanned becomes an owner.",
+			Desc:     "The QR code and progress go to stderr. On success app_id/app_secret are written into [feishu]\nand the person who scanned becomes the principal.",
 			Examples: []string{"bot-connect feishu setup", "bot-connect feishu setup --config ./config.toml --timeout 5m"},
 			Flags: []cli.Flag{
 				{Name: "config", Type: cli.String, Env: "BOT_CONNECT_CONFIG", Default: "~/.bot-connect/config.toml", Desc: "config file to write (created from the starter config if missing)"},
@@ -753,7 +753,7 @@ func feishuCmd() *cli.Command {
 				p := config.ExpandHome(c.Str("config"))
 				if c.Bool("dry-run") {
 					return c.DryRun(map[string]any{"create": "a Feishu bot (QR scan)", "write": p,
-						"keys": []string{"[feishu] app_id", "[feishu] app_secret", "[bot] owners += scanner"}})
+						"keys": []string{"[feishu] app_id", "[feishu] app_secret", "[bot] principals += scanner"}})
 				}
 				res, err := registerBot(c.Dur("timeout"))
 				if err != nil {
@@ -762,10 +762,10 @@ func feishuCmd() *cli.Command {
 				if err := writeFeishuConfig(p, res); err != nil {
 					return err
 				}
-				out := map[string]any{"app_id": res.appID, "brand": res.brand, "owner": res.ownerOpenID, "config": p,
+				out := map[string]any{"app_id": res.appID, "brand": res.brand, "principal": res.principalOpenID, "config": p,
 					"next": "bot-connect bot run --config " + p}
 				return c.Out(out, func(w io.Writer) {
-					fmt.Fprintf(w, "bot created: app_id=%s (%s); owner %s\nwritten to %s\nnext: bot-connect bot run --config %s\n", res.appID, res.brand, res.ownerOpenID, p, p)
+					fmt.Fprintf(w, "bot created: app_id=%s (%s); principal %s\nwritten to %s\nnext: bot-connect bot run --config %s\n", res.appID, res.brand, res.principalOpenID, p, p)
 				})
 			},
 		},
@@ -864,7 +864,7 @@ func toolCmd() *cli.Command {
 						case tools.KindNotFound:
 							e.Code, e.Suggestion = cli.ExitNotFound, "run: bot-connect tool call --name list_workers"
 						case tools.KindPermission:
-							e.Code, e.Suggestion = cli.ExitPermission, "this person may not do that; offer notify_owner instead"
+							e.Code, e.Suggestion = cli.ExitPermission, "this person may not do that; offer notify_principal instead"
 						case tools.KindInvalid:
 							e.Code, e.Suggestion = cli.ExitUsage, "see the input_schema in: bot-connect tool list --format json"
 						}

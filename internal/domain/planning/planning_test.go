@@ -10,7 +10,7 @@ import (
 var now = time.Date(2026, 10, 14, 10, 0, 0, 0, time.UTC)
 
 func TestGraphAndCompletion(t *testing.T) {
-	by := Actor{UserID: "u", Role: RoleOwner}
+	by := Actor{UserID: "u", Role: RolePrincipal}
 	mk := func(id ItemID, deps ...ItemID) Item {
 		it, _, err := New(id, Spec{Project: "P", Title: string(id), DependsOn: deps, Acceptance: []string{"a", " "}}, now, by)
 		if err != nil {

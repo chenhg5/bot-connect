@@ -10,6 +10,8 @@ import (
 
 	"github.com/chenhg5/bot-connect/internal/app"
 	"github.com/chenhg5/bot-connect/internal/domain/delegation"
+	"github.com/chenhg5/bot-connect/internal/domain/planning"
+	"github.com/chenhg5/bot-connect/internal/domain/portfolio"
 	. "github.com/chenhg5/bot-connect/internal/domain/shared"
 	"github.com/chenhg5/bot-connect/internal/judge"
 )
@@ -76,9 +78,9 @@ func (h *Harness) Run(ctx context.Context) Result {
 func (h *Harness) do(ctx context.Context, st Step) (string, error) {
 	switch {
 	case st.Say != "":
-		from := firstNonEmpty(st.From, "owner")
-		user, chat, name := ownerUser, ownerChat, "chicken"
-		if from != "owner" {
+		from := firstNonEmpty(st.From, "principal")
+		user, chat, name := principalUser, principalChat, "chicken"
+		if from != "principal" {
 			user, chat, name = userOf(from), dmOf(from), from
 			for _, p := range h.Case.People {
 				if p.ID == from && p.Name != "" {
@@ -151,8 +153,8 @@ func fmtT(t *time.Time) string {
 // chatsFor maps a check's target to the chats messages to them go to.
 func (h *Harness) chatsFor(to string) []string {
 	switch {
-	case to == "" || to == "owner":
-		return []string{ownerChat}
+	case to == "" || to == "principal":
+		return []string{principalChat}
 	case strings.HasPrefix(to, "group:"):
 		return []string{strings.TrimPrefix(to, "group:")}
 	}
@@ -186,15 +188,15 @@ func (h *Harness) check(ck Check, msgs []Msg, calls []ToolCall, before map[strin
 			return ""
 		}
 		if len(texts) == 0 || len(texts) < ck.Min {
-			return fmt.Sprintf("reply to %q: expected a message, got %d%s", firstNonEmpty(ck.To, "owner"), len(texts), why)
+			return fmt.Sprintf("reply to %q: expected a message, got %d%s", firstNonEmpty(ck.To, "principal"), len(texts), why)
 		}
 		all := strings.Join(texts, "\n")
 		if len(ck.ContainsAny) > 0 && !containsAny(all, ck.ContainsAny) {
-			return fmt.Sprintf("reply to %q: none of %v in: %s%s", firstNonEmpty(ck.To, "owner"), ck.ContainsAny, clip(all, 200), why)
+			return fmt.Sprintf("reply to %q: none of %v in: %s%s", firstNonEmpty(ck.To, "principal"), ck.ContainsAny, clip(all, 200), why)
 		}
 		for _, x := range ck.NotContains {
 			if strings.Contains(strings.ToLower(all), strings.ToLower(x)) {
-				return fmt.Sprintf("reply to %q: must not contain %q: %s%s", firstNonEmpty(ck.To, "owner"), x, clip(all, 200), why)
+				return fmt.Sprintf("reply to %q: must not contain %q: %s%s", firstNonEmpty(ck.To, "principal"), x, clip(all, 200), why)
 			}
 		}
 	case "assignment", "no_assignment":
@@ -225,6 +227,10 @@ func (h *Harness) check(ck Check, msgs []Msg, calls []ToolCall, before map[strin
 		})
 		if !found {
 			return fmt.Sprintf("item %s: none found; have:\n%s%s", desc(ck), h.stateText(), why)
+		}
+	case "plan", "no_plan":
+		if msg := h.checkPlan(ck); msg != "" {
+			return msg + why
 		}
 	case "tool":
 		used := map[string]bool{}
@@ -265,7 +271,7 @@ func (h *Harness) check(ck Check, msgs []Msg, calls []ToolCall, before map[strin
 			}
 		}
 		if len(texts) == 0 {
-			return fmt.Sprintf("judge %q: no message to %q%s", ck.Question, firstNonEmpty(ck.To, "owner"), why)
+			return fmt.Sprintf("judge %q: no message to %q%s", ck.Question, firstNonEmpty(ck.To, "principal"), why)
 		}
 		ans, err := h.judge.Ask(context.Background(), map[string]any{"messages": texts, "case": h.Case.Title},
 			map[string]judge.Question{"q": judge.Noul(ck.Question)})
@@ -397,7 +403,7 @@ func (h *Harness) stateText() string {
 		sort.Strings(ids)
 		for _, id := range ids {
 			it := s.Items[ItemID(id)]
-			fmt.Fprintf(&b, "- item %s「%s」%s due=%s owner=%s\n", it.ID, it.Title, it.Status, fmtT(it.Due), it.Owner)
+			fmt.Fprintf(&b, "- item %s「%s」%s due=%s assignee=%s\n", it.ID, it.Title, it.Status, fmtT(it.Due), it.Assignee)
 		}
 		var as []string
 		for id := range s.Assignments {
@@ -410,4 +416,91 @@ func (h *Harness) stateText() string {
 		}
 	})
 	return b.String()
+}
+
+// checkPlan: some project's plan matches the check (plan), or no project has one (no_plan).
+func (h *Harness) checkPlan(ck Check) string {
+	var pids []ProjectID
+	h.App.Store.Read(func(s *app.State) {
+		for id, p := range s.Projects {
+			if p.Plan.Stage != portfolio.NoPlan {
+				pids = append(pids, id)
+			}
+		}
+	})
+	sort.Slice(pids, func(i, j int) bool { return pids[i] < pids[j] })
+	if ck.Type == "no_plan" {
+		if len(pids) > 0 {
+			return "no_plan: there is a plan:\n" + h.App.DescribePlan(pids[0])
+		}
+		return ""
+	}
+	if len(pids) == 0 {
+		return "plan: no project has a plan"
+	}
+	var why []string
+	for _, pid := range pids {
+		p, an, _ := h.App.PlanStatus(pid)
+		miss := planMismatch(h, ck, p, an)
+		if miss == "" {
+			return ""
+		}
+		why = append(why, h.App.DescribePlan(pid)+"\n→ "+miss)
+	}
+	return "plan: none matches:\n" + strings.Join(why, "\n\n")
+}
+
+func planMismatch(h *Harness, ck Check, p portfolio.Project, an planning.Analysis) string {
+	alt := func(spec, v string) bool {
+		if spec == "" {
+			return true
+		}
+		for _, x := range strings.Split(spec, "|") {
+			if strings.TrimSpace(x) == v {
+				return true
+			}
+		}
+		return false
+	}
+	if ck.Kind != "" && string(p.Plan.Kind) != ck.Kind {
+		return "kind " + string(p.Plan.Kind)
+	}
+	if !alt(ck.Stage, string(p.Plan.Stage)) {
+		return "stage " + string(p.Plan.Stage)
+	}
+	if !alt(ck.Feasibility, string(p.Plan.Feasibility.Verdict)) {
+		return "feasibility " + string(p.Plan.Feasibility.Verdict)
+	}
+	var nodes map[ItemID]planning.Item
+	h.App.Store.Read(func(s *app.State) {
+		nodes = map[ItemID]planning.Item{}
+		for id, it := range s.Items {
+			if it.Project == p.ID && !it.Ask && it.Status != planning.Dropped {
+				nodes[id] = it
+			}
+		}
+	})
+	if len(nodes) < ck.Min {
+		return fmt.Sprintf("%d nodes, want at least %d", len(nodes), ck.Min)
+	}
+	if ck.Parallel && (len(an.Layers) == 0 || len(an.Layers[0]) < 2) {
+		return "nothing runs in parallel at the start"
+	}
+	if ck.AgentsFirst {
+		for _, i := range an.Issues {
+			if strings.Contains(i.Text, "agent 能做") {
+				return "a person got agent work: " + i.String()
+			}
+		}
+	}
+	if ck.Compounding {
+		found := false
+		for _, it := range nodes {
+			found = found || it.Node.Compounding
+		}
+		if !found {
+			return "no compounding node"
+		}
+	}
+	return ""
 }

@@ -65,7 +65,7 @@ func (a *App) Delegate(ctx context.Context, by Actor, sp DelegateSpec) (delegati
 		if sp.Kind.Answered() { // the ask gets its own child item
 			title := fmt.Sprintf("%s：%s", askTitle(sp.Kind), firstNonEmpty(sp.Brief.Goal, it.Title))
 			child, e, err := planning.New(ItemID(s.NextID("I")), planning.Spec{Project: it.Project, Parent: it.ID, Title: title,
-				Due: firstDue(sp.Brief.Due, it.Due), Needs: []planning.Need{{Kind: sp.Why}}}, a.now(), by)
+				Due: firstDue(sp.Brief.Due, it.Due), Needs: []planning.Need{{Kind: sp.Why}}, Ask: true}, a.now(), by)
 			if err != nil {
 				return nil, err
 			}
@@ -75,7 +75,7 @@ func (a *App) Delegate(ctx context.Context, by Actor, sp DelegateSpec) (delegati
 		} else if cur, ok := s.Assignments[it.Assignment]; ok && cur.Open() {
 			return nil, Conflict("item %s is already with %s (%s, %s); cancel that first", it.ID, cur.Worker, cur.ID, cur.Status)
 		} else if it.Assignment != "" {
-			it.Assignment, it.Owner = "", "" // the previous assignment ended
+			it.Assignment, it.Assignee = "", "" // the previous assignment ended
 		}
 		brief := sp.Brief
 		if brief.Goal == "" {
@@ -305,6 +305,9 @@ func (a *App) Report(ctx context.Context, by Actor, id AssignmentID, r Report) e
 		return err
 	}
 	a.afterWorkerEvent(ctx, as, r, evs)
+	if r.Action == "answer" {
+		a.advancePlans(ctx) // a confirmation may complete a plan's agreement
+	}
 	return nil
 }
 
@@ -343,7 +346,7 @@ func (a *App) afterWorkerEvent(ctx context.Context, as delegation.Assignment, r 
 		if a.isAgent(as.Worker) {
 			return // agents accept by queueing; no news
 		}
-		// Nothing to decide: tell the owner in one line, don't wake the brain.
+		// Nothing to decide: tell the principal in one line, don't wake the brain.
 		line := fmt.Sprintf("✅ %s 接下了 %s「%s」", as.Worker, as.ID, oneLine(as.Brief.Goal, 40))
 		if as.ETA != nil {
 			line += "，预计 " + fmtDue(as.ETA)
@@ -353,7 +356,7 @@ func (a *App) afterWorkerEvent(ctx context.Context, as delegation.Assignment, r 
 		if r.Note != "" {
 			line += "（" + oneLine(r.Note, 60) + "）"
 		}
-		a.tellOwner(ctx, line)
+		a.tellPrincipal(ctx, line)
 		return
 	case "decline":
 		text = head + " 被拒绝：" + firstNonEmpty(r.Note, "没说原因") + "。事项已回到待分派。"
@@ -539,15 +542,15 @@ func oneLine(s string, n int) string {
 	return s
 }
 
-// tellOwner sends the owner a one-line notice (no brain involved).
-func (a *App) tellOwner(ctx context.Context, text string) {
-	var owner workforce.Worker
+// tellPrincipal sends the principal a one-line notice (no brain involved).
+func (a *App) tellPrincipal(ctx context.Context, text string) {
+	var principal workforce.Worker
 	var ok bool
-	a.Store.Read(func(s *State) { owner, ok = s.Workers[Owner] })
+	a.Store.Read(func(s *State) { principal, ok = s.Workers[Principal] })
 	if !ok {
 		return
 	}
-	if d := a.driverFor(owner); d != nil {
-		_ = d.Notify(ctx, owner, delegation.Assignment{}, Notice{Kind: "message", Text: text})
+	if d := a.driverFor(principal); d != nil {
+		_ = d.Notify(ctx, principal, delegation.Assignment{}, Notice{Kind: "message", Text: text})
 	}
 }

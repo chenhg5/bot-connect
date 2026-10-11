@@ -53,7 +53,7 @@ type workerState struct {
 	Spec      config.Worker `json:"spec"`
 	Dynamic   bool          `json:"dynamic"`
 	Base      string        `json:"base,omitempty"`    // configured worker this derives from (instances, sub-workers)
-	UserID    string        `json:"user_id,omitempty"` // owner of a per-user instance
+	UserID    string        `json:"user_id,omitempty"` // principal of a per-user instance
 	Parent    string        `json:"parent,omitempty"`  // sub-worker continuing another session of this worker
 	Owned     []string      `json:"owned,omitempty"`   // sessions bot-connect created for this worker
 	SessionID string        `json:"session_id"`
@@ -540,7 +540,7 @@ func (m *Manager) loop(ctx context.Context, w *workerState) {
 	}
 }
 
-// waitWhileUsedLocally holds a task while someone else (e.g. the owner in
+// waitWhileUsedLocally holds a task while someone else (e.g. the principal in
 // their terminal) has recently written to the same session, so we don't
 // interleave turns into a conversation that is in use.
 func (m *Manager) waitWhileUsedLocally(ctx context.Context, t *Task, agent, sid string, lastRun time.Time) {

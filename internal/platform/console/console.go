@@ -1,5 +1,5 @@
 // Package console is a stdin/stdout platform for local testing.
-// Lines are sent as the owner; prefix a line with "@name " to speak as a
+// Lines are sent as the principal; prefix a line with "@name " to speak as a
 // visitor named name (e.g. "@jack 你好").
 package console
 
@@ -15,7 +15,7 @@ import (
 	"github.com/chenhg5/bot-connect/internal/hub"
 )
 
-const OwnerID = "console-owner"
+const PrincipalID = "console-principal"
 
 type Platform struct {
 	mu  sync.Mutex
@@ -35,7 +35,7 @@ func (p *Platform) Start(ctx context.Context, onMessage func(hub.Inbound)) error
 			if line == "" {
 				continue
 			}
-			sender, chat, name := OwnerID, "owner", ""
+			sender, chat, name := PrincipalID, "principal", ""
 			if strings.HasPrefix(line, "@") {
 				if i := strings.IndexByte(line, ' '); i > 1 {
 					name = line[1:i]

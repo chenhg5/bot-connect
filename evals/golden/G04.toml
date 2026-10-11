@@ -34,11 +34,11 @@ depends_on = ["dev"]
 say = "明天把新首页上线"
   [[steps.expect]]
   type = "judge"
-  to = "owner"
+  to = "principal"
   question = "`messages` 是否明确指出“明天上线新首页”按目前的进度做不到（或风险很大），而不是直接答应？"
   why = "要当场指出不可行"
   [[steps.expect]]
   type = "judge"
-  to = "owner"
+  to = "principal"
   question = "`messages` 是否给出了至少一种可行的替代做法或可选方案（例如缩小范围、延期、加人、先上一部分）？"
   why = "要给出可选的做法"

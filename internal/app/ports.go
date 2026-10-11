@@ -27,7 +27,7 @@ type State struct {
 	States      map[WorkerID]workforce.WorkerState     `json:"states"`
 	Signals     map[string]inbox.Signal                `json:"signals"`             // the attention inbox
 	Contacts    map[string]Contact                     `json:"contacts"`            // messages the bot sent people via contact
-	Escalated   map[string]bool                        `json:"escalated,omitempty"` // risk signals sent straight to the owner
+	Escalated   map[string]bool                        `json:"escalated,omitempty"` // risk signals sent straight to the principal
 	LastBatch   time.Time                              `json:"last_batch,omitempty"`
 }
 
@@ -131,7 +131,7 @@ type Notice struct {
 // wake-up (the rest of the inbox is listed alongside, not pushed).
 type Wake struct {
 	Signals   []inbox.Signal
-	ReplyConv string // where a plain reply goes ("" = the owner's private chat)
+	ReplyConv string // where a plain reply goes ("" = the principal's private chat)
 }
 
 // Waker hands wake-ups to the cognition layer.
@@ -158,6 +158,8 @@ type TriageResult struct {
 	Intent     string  // chat | status | request | reply | decision | who | other
 	Action     string  // for a reply to an assignment: accept | decline | counter | question | deliver | progress
 	Confidence float64 // of Action
+	Hints      []string
+	NeedsPlan  bool
 }
 
 // Say posts a message into a conversation (set by the wiring; used for

@@ -102,7 +102,7 @@ func serve(cfg *config.Config, o serveOpts) error {
 	if err != nil {
 		return err
 	}
-	// The owner's sessions, plus those of isolated Codex workers.
+	// The principal's sessions, plus those of isolated Codex workers.
 	sessions := session.NewCatalog(session.NewClaudeStore(""), session.NewCodexStore(""), session.NewCodexStore(workers.CodexHome()))
 	workers.Audit, workers.Sessions, workers.BusyWindow = auditLog, sessions, 90*time.Second
 	if !worker.SandboxSupported() {
@@ -173,7 +173,7 @@ func serve(cfg *config.Config, o serveOpts) error {
 		slog.Info("bot running", "bot", bc.Name, "brain", bc.Brain.Agent, "dir", bc.Dir, "version", func() string { v, _, _ := versionInfo(); return v }())
 	}
 	if useConsole {
-		fmt.Printf("bot-connect console — bot: %s。你是 owner；用 \"@名字 消息\" 以访客身份说话。日志：%s/bot-connect.log\n\n", consoleBot, cfg.DataDir)
+		fmt.Printf("bot-connect console — bot: %s。你是 principal；用 \"@名字 消息\" 以访客身份说话。日志：%s/bot-connect.log\n\n", consoleBot, cfg.DataDir)
 	}
 	<-ctx.Done()
 	slog.Info("shutting down")
@@ -206,11 +206,11 @@ func setupBot(cfg *config.Config, bc config.BotConfig, workers *worker.Manager, 
 			scope.Names[n] = true
 		}
 	}
-	owners := append([]string(nil), bc.Owners...)
+	principals := append([]string(nil), bc.Principals...)
 	if withConsole {
-		owners = append(owners, console.OwnerID)
+		principals = append(principals, console.PrincipalID)
 	}
-	policy := identity.NewStaticPolicy(owners, bc.Admins, bc.Members...)
+	policy := identity.NewStaticPolicy(principals, bc.Admins, bc.Members...)
 	prefix := ""
 	if len(cfg.Bots) > 1 {
 		prefix = bc.Name + "/"
@@ -241,7 +241,7 @@ func setupBot(cfg *config.Config, bc config.BotConfig, workers *worker.Manager, 
 		return nil, fmt.Errorf("tool server: %w", err)
 	}
 	name := bc.Name
-	b, err := brain.New(bc.Brain, h, workers, srv, reg.Names(), scope, name, bc.OwnerName)
+	b, err := brain.New(bc.Brain, h, workers, srv, reg.Names(), scope, name, bc.PrincipalName)
 	if err != nil {
 		return nil, err
 	}

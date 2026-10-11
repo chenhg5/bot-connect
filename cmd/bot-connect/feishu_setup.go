@@ -19,7 +19,7 @@ import (
 
 // `bot-connect feishu setup`: create a Feishu/Lark bot by scanning a QR code
 // (the same device-registration flow cc-connect uses), then write app_id,
-// app_secret and the scanner's open_id (as owner) into the config.
+// app_secret and the scanner's open_id (as principal) into the config.
 
 const (
 	accountsFeishu = "https://accounts.feishu.cn"
@@ -27,7 +27,7 @@ const (
 )
 
 type registration struct {
-	appID, appSecret, ownerOpenID, brand string
+	appID, appSecret, principalOpenID, brand string
 }
 
 type regClient struct {
@@ -141,7 +141,7 @@ func registerBot(timeout time.Duration) (*registration, error) {
 			continue
 		}
 		if poll.ClientID != "" && poll.ClientSecret != "" {
-			return &registration{appID: poll.ClientID, appSecret: poll.ClientSecret, ownerOpenID: poll.UserInfo.OpenID, brand: brand}, nil
+			return &registration{appID: poll.ClientID, appSecret: poll.ClientSecret, principalOpenID: poll.UserInfo.OpenID, brand: brand}, nil
 		}
 		switch poll.Error {
 		case "", "authorization_pending":
@@ -160,7 +160,7 @@ func registerBot(timeout time.Duration) (*registration, error) {
 }
 
 // writeFeishuConfig sets [feishu] app_id/app_secret(/domain) and adds the
-// owner to bot.owners, editing the TOML text in place to keep comments.
+// principal to bot.principals, editing the TOML text in place to keep comments.
 func writeFeishuConfig(path string, r *registration) error {
 	raw, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
@@ -175,7 +175,7 @@ func writeFeishuConfig(path string, r *registration) error {
 
 	var cur struct {
 		Bot struct {
-			Owners []string `toml:"owners"`
+			Principals []string `toml:"principals"`
 		} `toml:"bot"`
 	}
 	_, _ = toml.Decode(s, &cur)
@@ -185,20 +185,20 @@ func writeFeishuConfig(path string, r *registration) error {
 	if r.brand == "lark" {
 		s = setInSection(s, "feishu", "domain", `"https://open.larksuite.com"`)
 	}
-	if r.ownerOpenID != "" {
-		owners := cur.Bot.Owners
+	if r.principalOpenID != "" {
+		principals := cur.Bot.Principals
 		found := false
-		for _, o := range owners {
-			found = found || o == r.ownerOpenID
+		for _, o := range principals {
+			found = found || o == r.principalOpenID
 		}
 		if !found {
-			owners = append(owners, r.ownerOpenID)
+			principals = append(principals, r.principalOpenID)
 		}
-		quoted := make([]string, len(owners))
-		for i, o := range owners {
+		quoted := make([]string, len(principals))
+		for i, o := range principals {
 			quoted[i] = fmt.Sprintf("%q", o)
 		}
-		s = setInSection(s, "bot", "owners", "["+strings.Join(quoted, ", ")+"]")
+		s = setInSection(s, "bot", "principals", "["+strings.Join(quoted, ", ")+"]")
 	}
 	return os.WriteFile(path, []byte(s), 0o600)
 }

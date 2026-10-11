@@ -199,9 +199,9 @@ func (p *Platform) LookupUser(ctx context.Context, id string) (identity.User, er
 	return identity.User{Platform: "feishu", ID: id, Name: u.Name, UnionID: u.UnionID, Email: email}, nil
 }
 
-// DefaultOwners returns the app's owner (in this app's open_id space), so a
-// bot is owned by whoever owns the Feishu app unless bot.owners says otherwise.
-func (p *Platform) DefaultOwners(ctx context.Context) []string {
+// DefaultPrincipals returns the app's owner (in this app's open_id space), so a
+// bot is owned by whoever owns the Feishu app unless bot.principals says otherwise.
+func (p *Platform) DefaultPrincipals(ctx context.Context) []string {
 	appID, err := p.appID(ctx)
 	if err != nil {
 		slog.Warn("lark-cli: cannot resolve app id", "err", err)

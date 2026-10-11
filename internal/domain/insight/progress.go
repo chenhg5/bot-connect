@@ -57,25 +57,25 @@ func (p PaceStats) Samples(w WorkerID) int { return len(p.ratios[w]) }
 // CalendarFactor is wall-clock time per hour of effort: people work about
 // 8 hours a day, agents run around the clock. Unassigned work is assumed to
 // go to a person.
-func CalendarFactor(w *world.World, owner WorkerID) float64 {
-	if owner != "" && w.Workers[owner].Kind.Agentic() {
+func CalendarFactor(w *world.World, principal WorkerID) float64 {
+	if principal != "" && w.Workers[principal].Kind.Agentic() {
 		return 1
 	}
 	return 3
 }
 
 // Remaining is the wall-clock time an item still needs: its estimate,
-// adjusted by its owner's pace and working hours, minus the time already
+// adjusted by its principal's pace and working hours, minus the time already
 // spent on it.
 func Remaining(w *world.World, it planning.Item, pace Pace) time.Duration {
 	if it.Estimate <= 0 || !it.Open() {
 		return 0
 	}
 	f := 1.0
-	if pace != nil && it.Owner != "" {
-		f = pace.Factor(it.Owner)
+	if pace != nil && it.Assignee != "" {
+		f = pace.Factor(it.Assignee)
 	}
-	cf := CalendarFactor(w, it.Owner)
+	cf := CalendarFactor(w, it.Assignee)
 	total := time.Duration(float64(it.Estimate) * f * cf)
 	if it.Status == planning.Active && !it.StartedAt.IsZero() {
 		total -= w.Now.Sub(it.StartedAt)

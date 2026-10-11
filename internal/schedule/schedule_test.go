@@ -10,7 +10,7 @@ import (
 	"github.com/chenhg5/bot-connect/internal/identity"
 )
 
-var owner = identity.User{ID: "me", Role: identity.RoleOwner}
+var principal = identity.User{ID: "me", Role: identity.RolePrincipal}
 
 func TestNextSpecs(t *testing.T) {
 	now := time.Date(2026, 10, 10, 8, 0, 0, 0, time.Local)
@@ -49,7 +49,7 @@ func TestFireSkipOverlapAndDone(t *testing.T) {
 	s.now = func() time.Time { return now }
 	var fired []string
 	s.Fire = func(j Job) bool { fired = append(fired, j.ID); return true }
-	j, err := s.Create(Job{Spec: "@every 30m", Prompt: "check CI", CreatedBy: owner, ConvKey: "c"})
+	j, err := s.Create(Job{Spec: "@every 30m", Prompt: "check CI", CreatedBy: principal, ConvKey: "c"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +77,7 @@ func TestOnceAndAuthorize(t *testing.T) {
 	s.now = func() time.Time { return now }
 	n := 0
 	s.Fire = func(Job) bool { n++; return true }
-	once, _ := s.Create(Job{Spec: "@once 1h", Prompt: "remind", CreatedBy: owner})
+	once, _ := s.Create(Job{Spec: "@once 1h", Prompt: "remind", CreatedBy: principal})
 	now = now.Add(2 * time.Hour)
 	s.Tick()
 	s.Done(once.ID)
@@ -88,7 +88,7 @@ func TestOnceAndAuthorize(t *testing.T) {
 	}
 	allowed := true
 	s.Authorize = func(Job) bool { return allowed }
-	rec, _ := s.Create(Job{Spec: "@every 30m", Prompt: "x", CreatedBy: owner})
+	rec, _ := s.Create(Job{Spec: "@every 30m", Prompt: "x", CreatedBy: principal})
 	allowed = false
 	now = now.Add(time.Hour)
 	s.Tick()
@@ -100,7 +100,7 @@ func TestOnceAndAuthorize(t *testing.T) {
 func TestReloadPicksUpExternalEdits(t *testing.T) {
 	dir := t.TempDir()
 	a, _ := Open(dir)
-	j, _ := a.Create(Job{Spec: "@daily", Prompt: "x", CreatedBy: owner})
+	j, _ := a.Create(Job{Spec: "@daily", Prompt: "x", CreatedBy: principal})
 	b, _ := Open(dir) // e.g. the CLI
 	time.Sleep(10 * time.Millisecond)
 	if _, err := b.SetEnabled(j.ID, false); err != nil {

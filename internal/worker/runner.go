@@ -68,7 +68,7 @@ func ClaudeAccessArgs(spec config.Worker) []string {
 	}
 	args := []string{"--permission-mode", mode}
 	if spec.Isolate != nil && *spec.Isolate {
-		// Keep the owner's Claude setup out: no ~/.claude/CLAUDE.md, settings,
+		// Keep the principal's Claude setup out: no ~/.claude/CLAUDE.md, settings,
 		// hooks, plugins or MCP connectors (--bare needs an API key).
 		if hasEnv(spec.Env, "ANTHROPIC_API_KEY") {
 			args = append(args, "--bare")

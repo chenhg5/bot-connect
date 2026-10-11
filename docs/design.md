@@ -40,7 +40,7 @@ Each conversation (one IM chat) has a **lane**. Inbound messages and task report
 | Messages arriving during a running turn are **coalesced** into the next turn | Chat-style bursts ("等下" / "还有…") get one coherent reply, not three |
 | `debounce` (800ms) before a lane becomes eligible | Merges rapid-fire messages into the same turn |
 | At most `max_concurrent_turns` turns run globally | Caps LLM spend and rate limits |
-| When slots are scarce: **owner message < task report < visitor message**, then oldest first | The owner never waits behind strangers; finished work gets reported before new visitor chat |
+| When slots are scarce: **principal message < task report < visitor message**, then oldest first | The principal never waits behind strangers; finished work gets reported before new visitor chat |
 | Every received message gets an emoji reaction immediately | The sender knows it was seen even while queued |
 
 Slash commands (`/whoami /status /cancel /reset /help`) bypass the brain entirely.
@@ -49,7 +49,7 @@ Slash commands (`/whoami /status /cancel /reset /help`) bypass the brain entirel
 
 The brain does **not** load worker transcripts. Each turn it gets:
 
-1. **System prompt**: role, caller identity (owner/visitor), and a live **worker table**
+1. **System prompt**: role, caller identity (principal/visitor), and a live **worker table**
    (name, agent, description, idle/busy, queue length, last task one-liner).
 2. **Conversation memory**: the brain's own resumed session. For stateless or fresh brains, the last
    `history_limit` plain-text messages of this chat are inlined instead.
@@ -72,7 +72,7 @@ The worker's own long context lives in its agent session (`--resume` / `exec res
 
 ## 4. Permissions (minimal but structural)
 
-- Owner = sender id in `bot.owners`. Everyone else is a visitor.
+- Principal = sender id in `bot.principals`. Everyone else is a visitor.
 - A turn runs with the **least privilege of its items**. One visitor message in the batch means the
   whole turn is a visitor turn.
 - Visitor tool set = `list_workers` (public workers, status only) + `notify_owner` + `send_message`.
@@ -85,7 +85,7 @@ The worker's own long context lives in its agent session (`--resume` / `exec res
 ## Not in MVP (next candidates)
 
 - Parallel tasks in the same repo via git worktrees (currently: queue).
-- Approval round-trip: worker permission request → Feishu card → owner approves.
+- Approval round-trip: worker permission request → Feishu card → principal approves.
 - Progress streaming from running tasks; rolling per-worker summaries.
 - Proactive digests / scheduled checks.
 - More platforms (reuse cc-connect adapters).

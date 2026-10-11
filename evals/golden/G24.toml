@@ -1,0 +1,47 @@
+id = "G24"
+title = "复利：第四次发版时提出把发版做成工具或专门的 worker"
+critical = false
+milestone = "planning"
+now = "2026-10-12 10:00"
+
+[[agents]]
+id = "dev"
+description = "开发 agent：可以改 bot-connect 仓库、打 tag、写发版脚本"
+capabilities = ["repo:bot-connect:write"]
+
+[[projects]]
+id = "P5"
+title = "bot-connect 发版"
+priority = "P2"
+
+[[items]]
+project = "P5"
+title = "发布 v0.0.3"
+status = "done"
+routine = "release"
+
+[[items]]
+project = "P5"
+title = "发布 v0.0.4"
+status = "done"
+routine = "release"
+
+[[items]]
+project = "P5"
+title = "发布 v0.0.5"
+status = "done"
+routine = "release"
+
+[[steps]]
+say = "这周五前把 v0.0.6 发出去"
+timeout = "5m"
+  [[steps.expect]]
+  type = "assignment"
+  worker = "dev"
+  why = "发版交给 agent"
+  [[steps.expect]]
+  type = "judge"
+  to = "principal"
+  question = "这条回复是否提出（或已经安排）把发版这件反复做的事沉淀成可复用的工具、脚本、skill 或专门的 worker？"
+  at_least = 0.6
+  why = "重复的工作要复利"

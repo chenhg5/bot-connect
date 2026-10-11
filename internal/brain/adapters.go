@@ -75,7 +75,7 @@ func (a *claudeAdapter) Run(ctx context.Context, req Request) (Response, error) 
 		"--allowedTools", strings.Join(allowed, ","),
 	}
 	if a.cfg.Isolate == nil || *a.cfg.Isolate {
-		// Keep the owner's own Claude setup (~/.claude/CLAUDE.md, memory,
+		// Keep the principal's own Claude setup (~/.claude/CLAUDE.md, memory,
 		// hooks, plugins, settings) out of the brain. --bare is the most
 		// thorough but only authenticates with an API key; without one, load
 		// no setting sources, which also drops the user CLAUDE.md and keeps
@@ -154,7 +154,7 @@ func (a *codexAdapter) Run(ctx context.Context, req Request) (Response, error) {
 	}
 	env := toolEnv(req)
 	if a.cfg.Isolate == nil || *a.cfg.Isolate {
-		// Keep the owner's Codex setup out: own CODEX_HOME (no ~/.codex
+		// Keep the principal's Codex setup out: own CODEX_HOME (no ~/.codex
 		// config, global AGENTS.md, plugins, MCP) and no project AGENTS.md.
 		home := filepath.Join(filepath.Dir(a.cfg.WorkDir), "brain-codex-home") // outside what the brain can read
 		if err := agentcli.EnsureCodexHome(home); err != nil {

@@ -23,8 +23,8 @@ import (
 func actorOf(pm *app.App, tc TurnContext) Actor {
 	u := tc.Caller
 	a := Actor{UserID: u.ID, Role: Role(u.Role), Via: "brain"}
-	if u.Role == identity.RoleOwner {
-		a.Worker = Owner
+	if u.Role == identity.RolePrincipal {
+		a.Worker = Principal
 	} else if id, ok := pm.WorkerFor(u.ID, u.UnionID, u.Email); ok {
 		a.Worker = id
 	}
@@ -94,8 +94,8 @@ func addPM(r *Registry, env Env) {
 		Name: "brief",
 		Description: "The page you work from: the agenda computed by bot-connect (Now / Today / Watch, with keys and suggested actions) and every active project's card " +
 			"(progress, health, next milestone, members and roles, open items). Already in your context each turn; call it again after changes, or with project=… for one project in full.",
-		OwnerOnly: true,
-		Schema:    obj(props{"project": str("one project in full (card, decisions, conventions, all open items)")}),
+		PrincipalOnly: true,
+		Schema:        obj(props{"project": str("one project in full (card, decisions, conventions, all open items)")}),
 		Handler: func(ctx context.Context, tc TurnContext, a map[string]any) (string, error) {
 			out := pm.Briefing(ctx, app.BriefingOptions{Focus: projectArg(pm, a), MaxItems: n(a, "max_items", 8)})
 			if out == "" {
@@ -131,7 +131,7 @@ func addPM(r *Registry, env Env) {
 			}
 			cs := pm.Candidates(ctx, need)
 			if len(cs) == 0 {
-				return "(no candidates — nobody's role, skills or capabilities match; ask the owner who should do it)", nil
+				return "(no candidates — nobody's role, skills or capabilities match; ask the principal who should do it)", nil
 			}
 			var b strings.Builder
 			for _, c := range cs {
@@ -151,9 +151,9 @@ func addPM(r *Registry, env Env) {
 		},
 	})
 	r.add(Tool{
-		Name:        "plan_item",
-		Description: "Add an item (a piece of work, or a milestone) to a project: title, acceptance criteria, due, effort, dependencies, and what it needs (needs: \"capability:repo:tapnow:write\", \"approval:deploy:prod\", \"decision:…\", \"physical:…\").",
-		OwnerOnly:   true,
+		Name:          "plan_item",
+		Description:   "Add an item (a piece of work, or a milestone) to a project: title, acceptance criteria, due, effort, dependencies, and what it needs (needs: \"capability:repo:tapnow:write\", \"approval:deploy:prod\", \"decision:…\", \"physical:…\").",
+		PrincipalOnly: true,
 		Schema: obj(props{
 			"project":    str("project id (default: the company)"),
 			"title":      str("what must be done"),
@@ -184,12 +184,13 @@ func addPM(r *Registry, env Env) {
 	})
 	r.add(Tool{
 		Name: "delegate",
-		Description: "Hand tracked work to a worker (agent, person, the owner) — it is followed up, risks are watched, and the result comes back here for review. " +
+		Description: "Hand ONE tracked step to a worker (agent, person, the principal) — it is followed up, risks are watched, and the result comes back here for review. " +
+			"Work with several steps (research → decide → do), several workers, or an open path (a goal) goes into plan draft instead, which hands out its nodes itself. " +
 			"Give item=<id>, or project + goal to create the item on the way. Agents first: a person only when there is a reason (why) — approval, decision, physical, relationship, judgment, knowledge, or a capability no agent has. " +
 			"kind=approval|decision|clarification|review asks for an answer (decision needs options); work is delivered and then verified with review. Keep the brief self-contained and minimal (an external worker sees only it).",
-		OwnerOnly: true,
+		PrincipalOnly: true,
 		Schema: obj(props{
-			"worker":   str("worker id or name (roster in the brief); \"owner\" for the owner"),
+			"worker":   str("worker id or name (roster in the brief); \"principal\" for the principal"),
 			"item":     str("existing item id"),
 			"project":  str("with goal: project to create the item in (default: the company)"),
 			"goal":     str("what to do and why, self-contained"),
@@ -205,6 +206,21 @@ func addPM(r *Registry, env Env) {
 		Handler: func(ctx context.Context, tc TurnContext, a map[string]any) (string, error) {
 			by := actorOf(pm, tc)
 			itemID := ItemID(s(a, "item"))
+			if _, ok := pm.Item(itemID); !ok && itemID != "" {
+				if _, _, isProject := pm.PlanStatus(ProjectID(itemID)); isProject && s(a, "goal") != "" {
+					a["project"], itemID = string(itemID), "" // a project id given as the item: create the item there
+				}
+			}
+			if focusNeedsPlan(pm, tc) {
+				pid := projectArg(pm, a)
+				if it, ok := pm.Item(itemID); ok {
+					pid = it.Project
+				}
+				if p, _, ok := pm.PlanStatus(pid); !ok || pid == OrgProject || p.Plan.Stage == portfolio.NoPlan {
+					return "", &ToolError{KindInvalid, "this request needs a plan, not a single hand-off: use plan draft (who does what, real dependencies, which step needs a person); " +
+						"its exploratory nodes (findings, drafts) go out to agents right away"}
+				}
+			}
 			if itemID == "" {
 				if s(a, "goal") == "" {
 					return "", &ToolError{KindInvalid, "give item, or goal (and project) to create one"}
@@ -244,17 +260,21 @@ func addPM(r *Registry, env Env) {
 			if as.Brief.Due != nil {
 				dueText = ", due " + app.DescribeDate(*as.Brief.Due, pm.Clock.Now())
 			}
-			return fmt.Sprintf("%s → %s（%s，status %s — not accepted yet unless it says accepted）on item %s%s; the result comes back here.", as.ID, as.Worker, as.Kind, as.Status, as.Item, dueText), nil
+			out := fmt.Sprintf("%s → %s（%s，status %s — not accepted yet unless it says accepted）on item %s%s; the result comes back here.", as.ID, as.Worker, as.Kind, as.Status, as.Item, dueText)
+			if h := pm.RoutineHint(as.Project); h != "" {
+				out += "\n复利提示：" + h + "。告诉委托人你的建议，并把它作为复利节点（plan，compounding）安排上。"
+			}
+			return out, nil
 		},
 	})
 	r.add(Tool{
-		Name:        "review",
-		Description: "Requester side of an assignment: verify a delivery (check every acceptance criterion first), revise (say exactly what's missing), cancel, answer_question (reply to the worker's question), accept_counter (take their proposed deadline).",
-		OwnerOnly:   true,
+		Name:          "review",
+		Description:   "Requester side of an assignment: verify a delivery (check every acceptance criterion first), revise (say exactly what's missing), cancel, answer_question (reply to the worker's question), accept_counter (take their proposed deadline).",
+		PrincipalOnly: true,
 		Schema: obj(props{"assignment": str("assignment id, e.g. A12"), "action": enum("", "verify", "revise", "cancel", "answer_question", "accept_counter"),
 			"note": str("what's missing / the answer / why")}, "assignment", "action"),
 		Handler: func(ctx context.Context, tc TurnContext, a map[string]any) (string, error) {
-			if s(a, "action") == "accept_counter" && !ownerSpoke(pm, tc) {
+			if s(a, "action") == "accept_counter" && !principalSpoke(pm, tc) {
 				return "", &ToolError{KindPermission, "a new deadline is the requester's decision: tell them the proposal and its impact, and accept it only in the turn where they agree"}
 			}
 			if err := pm.Review(ctx, actorOf(pm, tc), AssignmentID(s(a, "assignment")), s(a, "action"), s(a, "note")); err != nil {
@@ -266,7 +286,7 @@ func addPM(r *Registry, env Env) {
 	})
 	r.add(Tool{
 		Name: "respond",
-		Description: "Worker side of an assignment, for a person replying in chat (or the owner reporting on their behalf): accept, decline (reason), counter (new due), progress (note, eta), " +
+		Description: "Worker side of an assignment, for a person replying in chat (or the principal reporting on their behalf): accept, decline (reason), counter (new due), progress (note, eta), " +
 			"ask (a question), deliver (result + evidence), answer (choice for an approval/decision/clarification/review), release (hand it back).",
 		Schema: obj(props{
 			"assignment": str("assignment id"),
@@ -317,10 +337,10 @@ func addPM(r *Registry, env Env) {
 		},
 	})
 	r.add(Tool{
-		Name:        "inbox",
-		Description: "Open attention signals (messages, worker replies, risks, cadence, relays), highest score first, with ids. Deferred ones too with all=true.",
-		OwnerOnly:   true,
-		Schema:      obj(props{"all": boolean("include deferred signals")}),
+		Name:          "inbox",
+		Description:   "Open attention signals (messages, worker replies, risks, cadence, relays), highest score first, with ids. Deferred ones too with all=true.",
+		PrincipalOnly: true,
+		Schema:        obj(props{"all": boolean("include deferred signals")}),
 		Handler: func(ctx context.Context, tc TurnContext, a map[string]any) (string, error) {
 			all, _ := a["all"].(bool)
 			sigs := pm.Inbox(all)
@@ -338,7 +358,7 @@ func addPM(r *Registry, env Env) {
 		Name: "signal_update",
 		Description: "Record what you decided about a signal: handled (done), ignored (with the reason), deferred (until a time — it comes back then), handling (you're on it). " +
 			"Signals you were woken for and answered are marked handled automatically; use this for the rest, and whenever you put something off.",
-		OwnerOnly: true,
+		PrincipalOnly: true,
 		Schema: obj(props{"signal": str("signal id, e.g. S12"), "status": enum("", "handled", "ignored", "deferred", "handling"),
 			"note": str("why / what was done"), "until": str("deferred: when to look again (下午 / 明天 / 2h …)")}, "signal", "status"),
 		Handler: func(ctx context.Context, tc TurnContext, a map[string]any) (string, error) {
@@ -353,10 +373,10 @@ func addPM(r *Registry, env Env) {
 		},
 	})
 	r.add(Tool{
-		Name:        "reply",
-		Description: "Answer another signal in the inbox where it came from (its private chat or group) — you don't pick the channel. Not for the signal(s) this turn is about: their answer is your final message. Marks the signal handled unless keep_open.",
-		OwnerOnly:   true,
-		Schema:      obj(props{"signal": str("signal id"), "text": str("the reply (Markdown ok)"), "keep_open": boolean("leave the signal open")}, "signal", "text"),
+		Name:          "reply",
+		Description:   "Answer another signal in the inbox where it came from (its private chat or group) — you don't pick the channel. Not for the signal(s) this turn is about: their answer is your final message. Marks the signal handled unless keep_open.",
+		PrincipalOnly: true,
+		Schema:        obj(props{"signal": str("signal id"), "text": str("the reply (Markdown ok)"), "keep_open": boolean("leave the signal open")}, "signal", "text"),
 		Handler: func(ctx context.Context, tc TurnContext, a map[string]any) (string, error) {
 			sig, ok := pm.Signal(s(a, "signal"))
 			if !ok {
@@ -385,7 +405,7 @@ func addPM(r *Registry, env Env) {
 		Name: "contact",
 		Description: "A question or a note to a person (not an agent) — NOT for handing them work (that is delegate: tracked, followed up, verified). Say who, what, how urgent, whether you need an answer, and what it's about. bot-connect picks the channel " +
 			"(chat, urgent call, email…) from their contact routes, respects their hours and reminder limits, and brings their answer back as a signal about the same thing.",
-		OwnerOnly: true,
+		PrincipalOnly: true,
 		Schema: obj(props{
 			"person":       str("worker id or name"),
 			"message":      str("self-contained: only what they need to know"),
@@ -397,6 +417,9 @@ func addPM(r *Registry, env Env) {
 		}, "person", "message"),
 		Handler: func(ctx context.Context, tc TurnContext, a map[string]any) (string, error) {
 			who, err := pm.ResolveWorker(s(a, "person"))
+			if err == nil && who == Principal && principalSpoke(pm, tc) {
+				return "", &ToolError{KindInvalid, "you are talking with the principal in this turn: just reply to them directly"}
+			}
 			if err != nil {
 				return "", domainErr(err)
 			}
@@ -420,10 +443,10 @@ func addPM(r *Registry, env Env) {
 		},
 	})
 	r.add(Tool{
-		Name:        "authorize",
-		Description: "Before an action that may need approval (merge:main, deploy:prod, publish:external, spend…): checks the approval rules. Allowed → go ahead. Otherwise an approval request goes to whoever the rule names now (e.g. this week's on-call) and you get its assignment id; the answer comes back here.",
-		OwnerOnly:   true,
-		Schema:      obj(props{"item": str("the item the action belongs to"), "action": str("e.g. deploy:prod"), "scope": str("e.g. repo:tapnow"), "why": str("context for the approver")}, "item", "action"),
+		Name:          "authorize",
+		Description:   "Before an action that may need approval (merge:main, deploy:prod, publish:external, spend…): checks the approval rules. Allowed → go ahead. Otherwise an approval request goes to whoever the rule names now (e.g. this week's on-call) and you get its assignment id; the answer comes back here.",
+		PrincipalOnly: true,
+		Schema:        obj(props{"item": str("the item the action belongs to"), "action": str("e.g. deploy:prod"), "scope": str("e.g. repo:tapnow"), "why": str("context for the approver")}, "item", "action"),
 		Handler: func(ctx context.Context, tc TurnContext, a map[string]any) (string, error) {
 			g, err := pm.Authorize(ctx, actorOf(pm, tc), ItemID(s(a, "item")), s(a, "action"), s(a, "scope"), s(a, "why"))
 			if err != nil {
@@ -439,9 +462,9 @@ func addPM(r *Registry, env Env) {
 		},
 	})
 	r.add(Tool{
-		Name:        "project_setup",
-		Description: "Start a project: title, priority, timebox, objective. Its messages and reports default to this conversation. Then add members and roles with project_update.",
-		OwnerOnly:   true,
+		Name:          "project_setup",
+		Description:   "Start a project: title, priority, timebox, objective. Its messages and reports default to this conversation. Then add members and roles with project_update.",
+		PrincipalOnly: true,
 		Schema: obj(props{"title": str(""), "id": str("optional short id"), "parent": str("parent project (default: the company)"),
 			"priority": enum("", "P0", "P1", "P2", "P3"), "from": str("start"), "until": str("end"), "objective": str("the outcome and how it's measured")}, "title"),
 		Handler: func(ctx context.Context, tc TurnContext, a map[string]any) (string, error) {
@@ -473,7 +496,7 @@ func addPM(r *Registry, env Env) {
 		Name: "project_update",
 		Description: "Change a project (\"org\" = the company): priority, status; add a member with a role, duties and period (member_*); end a membership; set an approval rule (policy_*); " +
 			"add to the project card (card_*: scope, a decision with its why, a convention, a link). Several fields may be set at once.",
-		OwnerOnly: true,
+		PrincipalOnly: true,
 		Schema: obj(props{
 			"project": str("project id, or org"), "priority": enum("", "P0", "P1", "P2", "P3"), "status": enum("", "active", "paused", "done", "cancelled"),
 			"member_worker": str("add member: worker id"), "member_role": str("their role here"), "member_duties": arr("what to go to them for"),
@@ -554,10 +577,10 @@ func addPM(r *Registry, env Env) {
 		},
 	})
 	r.add(Tool{
-		Name:        "item_update",
-		Description: "Change an item: a new due date (an open assignment follows and its worker is told), drop it (its assignment is cancelled), or mark it done without a delivery.",
-		OwnerOnly:   true,
-		Schema:      obj(props{"item": str("item id"), "due": str("new deadline"), "drop": str("drop it, with the reason"), "complete": boolean("mark done")}, "item"),
+		Name:          "item_update",
+		Description:   "Change an item: a new due date (an open assignment follows and its worker is told), drop it (its assignment is cancelled), or mark it done without a delivery.",
+		PrincipalOnly: true,
+		Schema:        obj(props{"item": str("item id"), "due": str("new deadline"), "drop": str("drop it, with the reason"), "complete": boolean("mark done")}, "item"),
 		Handler: func(ctx context.Context, tc TurnContext, a map[string]any) (string, error) {
 			by, id := actorOf(pm, tc), ItemID(s(a, "item"))
 			switch {
@@ -586,7 +609,7 @@ func addPM(r *Registry, env Env) {
 	})
 	r.add(Tool{
 		Name:        "note_person",
-		Description: "Record how someone is doing (presence: away/busy…, receptiveness: low/normal/high, load) with the evidence. A note about someone else is a guess: it expires within a day and is never shown to anyone but the owner. People can declare their own state.",
+		Description: "Record how someone is doing (presence: away/busy…, receptiveness: low/normal/high, load) with the evidence. A note about someone else is a guess: it expires within a day and is never shown to anyone but the principal. People can declare their own state.",
 		Schema: obj(props{"worker": str("worker id"), "dim": enum("", "presence", "receptiveness", "load", "context"),
 			"value": str("e.g. away, low"), "detail": str("evidence, briefly")}, "worker", "dim", "value"),
 		Handler: func(ctx context.Context, tc TurnContext, a map[string]any) (string, error) {
@@ -634,9 +657,9 @@ func itemSpec(pm *app.App, tc TurnContext, a map[string]any) (planning.Spec, err
 	return sp, nil
 }
 
-// ownerSpoke reports whether this turn carries a message from the owner side
+// principalSpoke reports whether this turn carries a message from the principal side
 // (decisions reserved for people can't be taken in turns the scaffold woke).
-func ownerSpoke(pm *app.App, tc TurnContext) bool {
+func principalSpoke(pm *app.App, tc TurnContext) bool {
 	if len(tc.Focus) == 0 {
 		return tc.Caller.Privileged() && tc.Caller.ID != "bot-connect" // a turn outside the main session: the caller is the speaker
 	}

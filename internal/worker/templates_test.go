@@ -13,8 +13,8 @@ import (
 )
 
 var (
-	ownerScope  = Scope{Bot: "b", Caller: identity.User{ID: "me", Role: identity.RoleOwner}}
-	memberScope = Scope{Bot: "b", Caller: identity.User{ID: "m", Role: identity.RoleMember}}
+	principalScope = Scope{Bot: "b", Caller: identity.User{ID: "me", Role: identity.RolePrincipal}}
+	memberScope    = Scope{Bot: "b", Caller: identity.User{ID: "m", Role: identity.RoleMember}}
 )
 
 func dur(d time.Duration) *config.Duration { return &config.Duration{Duration: d} }
@@ -31,7 +31,7 @@ func TestTemplateCreateCapacityAndScope(t *testing.T) {
 	if _, err := m.CreateFromTemplate("scratch", CreateOptions{Purpose: "x", Bot: "b"}, memberScope); err == nil {
 		t.Fatal("members must not create workers")
 	}
-	a, err := m.CreateFromTemplate("scratch", CreateOptions{Purpose: "fix login", Bot: "b", By: ownerScope.Caller}, ownerScope)
+	a, err := m.CreateFromTemplate("scratch", CreateOptions{Purpose: "fix login", Bot: "b", By: principalScope.Caller}, principalScope)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,31 +41,31 @@ func TestTemplateCreateCapacityAndScope(t *testing.T) {
 	if st, err := os.Stat(a.Dir); err != nil || !st.IsDir() {
 		t.Fatal("workspace dir not created")
 	}
-	if _, err := m.CreateFromTemplate("scratch", CreateOptions{Name: "bad name!", Bot: "b"}, ownerScope); err == nil {
+	if _, err := m.CreateFromTemplate("scratch", CreateOptions{Name: "bad name!", Bot: "b"}, principalScope); err == nil {
 		t.Fatal("invalid name accepted")
 	}
-	if _, err := m.CreateFromTemplate("scratch", CreateOptions{Name: "two", Bot: "b"}, ownerScope); err != nil {
+	if _, err := m.CreateFromTemplate("scratch", CreateOptions{Name: "two", Bot: "b"}, principalScope); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.CreateFromTemplate("scratch", CreateOptions{Bot: "b"}, ownerScope); err == nil || !strings.Contains(err.Error(), "capacity") {
+	if _, err := m.CreateFromTemplate("scratch", CreateOptions{Bot: "b"}, principalScope); err == nil || !strings.Contains(err.Error(), "capacity") {
 		t.Fatalf("capacity not enforced: %v", err)
 	}
 
 	// The bot's template allowlist, other bots and members.
-	limited := ownerScope
+	limited := principalScope
 	limited.Template = map[string]bool{"scratch": true}
 	if _, err := m.CreateFromTemplate("secret", CreateOptions{Bot: "b"}, limited); err == nil {
 		t.Fatal("template outside the bot's allowlist accepted")
 	}
-	other := ownerScope
+	other := principalScope
 	other.Bot = "other"
 	if m.Access("scratch-1", other).See || m.Access("scratch-1", memberScope).See {
-		t.Fatal("a template worker must be visible only to its bot's owner/admins")
+		t.Fatal("a template worker must be visible only to its bot's principal/admins")
 	}
 	if !m.Access("scratch-1", limited).Delegate {
-		t.Fatal("owner can't use their worker")
+		t.Fatal("principal can't use their worker")
 	}
-	if ov := m.Overview(ownerScope); !strings.Contains(ov, "from template scratch") || !strings.Contains(ov, "in use 2/2") {
+	if ov := m.Overview(principalScope); !strings.Contains(ov, "from template scratch") || !strings.Contains(ov, "in use 2/2") {
 		t.Fatalf("overview lacks template info:\n%s", ov)
 	}
 	if ov := m.Overview(memberScope); strings.Contains(ov, "templates") {
@@ -77,17 +77,17 @@ func TestTemplateCreateCapacityAndScope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !m2.Access("two", ownerScope).Delegate {
+	if !m2.Access("two", principalScope).Delegate {
 		t.Fatal("template worker lost on restart")
 	}
 
-	if _, err := m.Retire("scratch-1", false, ownerScope); err != nil {
+	if _, err := m.Retire("scratch-1", false, principalScope); err != nil {
 		t.Fatal(err)
 	}
-	if m.Access("scratch-1", ownerScope).See {
+	if m.Access("scratch-1", principalScope).See {
 		t.Fatal("retired worker still listed")
 	}
-	if _, err := m.CreateFromTemplate("scratch", CreateOptions{Bot: "b"}, ownerScope); err != nil {
+	if _, err := m.CreateFromTemplate("scratch", CreateOptions{Bot: "b"}, principalScope); err != nil {
 		t.Fatalf("retiring must free capacity: %v", err)
 	}
 }
@@ -97,13 +97,13 @@ func TestTemplateExistingRoots(t *testing.T) {
 	sub := filepath.Join(root, "proj")
 	_ = os.Mkdir(sub, 0o700)
 	m, _ := NewManager(nil, []config.Template{{Name: "rev", Agent: "claudecode", Access: "readonly", Workspace: "existing", Roots: []string{root}, MaxInstances: 3}}, t.TempDir())
-	if _, err := m.CreateFromTemplate("rev", CreateOptions{Dir: outside, Bot: "b"}, ownerScope); err == nil || !strings.Contains(err.Error(), "outside") {
+	if _, err := m.CreateFromTemplate("rev", CreateOptions{Dir: outside, Bot: "b"}, principalScope); err == nil || !strings.Contains(err.Error(), "outside") {
 		t.Fatalf("directory outside roots accepted: %v", err)
 	}
-	if _, err := m.CreateFromTemplate("rev", CreateOptions{Dir: sub + "/../../" + filepath.Base(outside), Bot: "b"}, ownerScope); err == nil {
+	if _, err := m.CreateFromTemplate("rev", CreateOptions{Dir: sub + "/../../" + filepath.Base(outside), Bot: "b"}, principalScope); err == nil {
 		t.Fatal("path escape accepted")
 	}
-	w, err := m.CreateFromTemplate("rev", CreateOptions{Dir: sub, Bot: "b"}, ownerScope)
+	w, err := m.CreateFromTemplate("rev", CreateOptions{Dir: sub, Bot: "b"}, principalScope)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +129,7 @@ func gitRepo(t *testing.T) string {
 func TestTemplateWorktreeRetire(t *testing.T) {
 	repo := gitRepo(t)
 	m, _ := NewManager(nil, []config.Template{{Name: "dev", Agent: "claudecode", Access: "workspace", Workspace: "worktree", Repo: repo, MaxInstances: 3}}, t.TempDir())
-	w, err := m.CreateFromTemplate("dev", CreateOptions{Name: "login", Bot: "b"}, ownerScope)
+	w, err := m.CreateFromTemplate("dev", CreateOptions{Name: "login", Bot: "b"}, principalScope)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,11 +147,11 @@ func TestTemplateWorktreeRetire(t *testing.T) {
 	}
 
 	_ = os.WriteFile(filepath.Join(w.Dir, "wip.txt"), []byte("x"), 0o600)
-	if _, err := m.Retire("login", false, ownerScope); err == nil || !strings.Contains(err.Error(), "uncommitted") {
+	if _, err := m.Retire("login", false, principalScope); err == nil || !strings.Contains(err.Error(), "uncommitted") {
 		t.Fatalf("dirty worktree retired: %v", err)
 	}
 	_ = os.Remove(filepath.Join(w.Dir, "wip.txt"))
-	msg, err := m.Retire("login", false, ownerScope)
+	msg, err := m.Retire("login", false, principalScope)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +159,7 @@ func TestTemplateWorktreeRetire(t *testing.T) {
 		t.Fatalf("clean worktree should be removed, branch kept: %s", msg)
 	}
 	// Same name again reuses the kept branch.
-	if _, err := m.CreateFromTemplate("dev", CreateOptions{Name: "login", Bot: "b"}, ownerScope); err != nil {
+	if _, err := m.CreateFromTemplate("dev", CreateOptions{Name: "login", Bot: "b"}, principalScope); err != nil {
 		t.Fatalf("re-create on kept branch: %v", err)
 	}
 }
@@ -169,8 +169,8 @@ func TestReapIdleTemplateWorkers(t *testing.T) {
 		{Name: "short", Agent: "claudecode", Access: "workspace", Workspace: "dir", MaxInstances: 3, IdleTTL: dur(time.Hour)},
 		{Name: "keep", Agent: "claudecode", Access: "workspace", Workspace: "dir", MaxInstances: 3, IdleTTL: dur(0)},
 	}, t.TempDir())
-	a, _ := m.CreateFromTemplate("short", CreateOptions{Bot: "b"}, ownerScope)
-	k, _ := m.CreateFromTemplate("keep", CreateOptions{Bot: "b"}, ownerScope)
+	a, _ := m.CreateFromTemplate("short", CreateOptions{Bot: "b"}, principalScope)
+	k, _ := m.CreateFromTemplate("keep", CreateOptions{Bot: "b"}, principalScope)
 	if got := m.Reap(time.Now().Add(30 * time.Minute)); len(got) != 0 {
 		t.Fatalf("reaped too early: %v", got)
 	}
@@ -186,7 +186,7 @@ func TestReapIdleTemplateWorkers(t *testing.T) {
 	if got := m.Reap(time.Now().Add(2 * time.Hour)); len(got) != 1 || got[0] != a.Name {
 		t.Fatalf("reaped %v, want [%s]", got, a.Name)
 	}
-	if !m.Access(k.Name, ownerScope).See {
+	if !m.Access(k.Name, principalScope).See {
 		t.Fatal("idle_ttl = 0 must never be reaped")
 	}
 }

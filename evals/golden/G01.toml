@@ -7,7 +7,7 @@ now = "2026-10-12 10:00"
 say = "在吗"
   [[steps.expect]]
   type = "reply"
-  to = "owner"
+  to = "principal"
   [[steps.expect]]
   type = "latency"
   max = "30s"

@@ -21,18 +21,18 @@ type (
 // company-wide approval rules live on it.
 const OrgProject ProjectID = "org"
 
-// Owner is the worker id of the bot's owner as a person.
-const Owner WorkerID = "owner"
+// Principal is the worker id of the bot's principal as a person.
+const Principal WorkerID = "principal"
 
 // Role is a caller's role towards the bot.
 type Role string
 
 const (
-	RoleOwner   Role = "owner"
-	RoleAdmin   Role = "admin"
-	RoleMember  Role = "member"
-	RoleVisitor Role = "visitor"
-	RoleSystem  Role = "system" // rules, drivers, the scaffold itself
+	RolePrincipal Role = "principal"
+	RoleAdmin     Role = "admin"
+	RoleMember    Role = "member"
+	RoleVisitor   Role = "visitor"
+	RoleSystem    Role = "system" // rules, drivers, the scaffold itself
 )
 
 // Actor is whoever performs a command or causes an event.
@@ -46,8 +46,8 @@ type Actor struct {
 // System is the scaffold acting on its own (a rule, a driver).
 func System(via string) Actor { return Actor{Role: RoleSystem, Via: via} }
 
-// Privileged: owner or admin.
-func (a Actor) Privileged() bool { return a.Role == RoleOwner || a.Role == RoleAdmin }
+// Privileged: principal or admin.
+func (a Actor) Privileged() bool { return a.Role == RolePrincipal || a.Role == RoleAdmin }
 
 func (a Actor) String() string {
 	switch {

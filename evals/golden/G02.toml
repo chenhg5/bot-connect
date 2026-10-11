@@ -45,12 +45,12 @@ status = "accepted"
 say = "官网改版现在怎么样？"
   [[steps.expect]]
   type = "reply"
-  to = "owner"
+  to = "principal"
   contains_any = ["埋点"]
   why = "说出进行中的事"
   [[steps.expect]]
   type = "reply"
-  to = "owner"
+  to = "principal"
   contains_any = ["首页开发", "开发"]
   why = "说出还没开始的事"
   [[steps.expect]]

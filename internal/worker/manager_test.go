@@ -40,10 +40,10 @@ func TestBusyWorkerQueuesAndResumes(t *testing.T) {
 	m.OnFinish = func(t Task) { mu.Lock(); finished = append(finished, t); mu.Unlock() }
 	m.Start(context.Background())
 
-	t1, a1, _ := m.Delegate("b", "w", "first", "c", Requester{ID: "me", Role: identity.RoleOwner}, false)
+	t1, a1, _ := m.Delegate("b", "w", "first", "c", Requester{ID: "me", Role: identity.RolePrincipal}, false)
 	time.Sleep(30 * time.Millisecond)
-	t2, a2, _ := m.Delegate("b", "w", "second", "c", Requester{ID: "me", Role: identity.RoleOwner}, false)
-	t3, a3, _ := m.Delegate("b", "w", "third", "c", Requester{ID: "me", Role: identity.RoleOwner}, true) // urgent: ahead of t2
+	t2, a2, _ := m.Delegate("b", "w", "second", "c", Requester{ID: "me", Role: identity.RolePrincipal}, false)
+	t3, a3, _ := m.Delegate("b", "w", "third", "c", Requester{ID: "me", Role: identity.RolePrincipal}, true) // urgent: ahead of t2
 	if a1 != 0 || a2 != 1 || a3 != 1 {
 		t.Fatalf("ahead = %d %d %d", a1, a2, a3)
 	}

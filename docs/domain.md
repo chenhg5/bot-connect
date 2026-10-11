@@ -57,7 +57,7 @@
 package shared
 
 type (
-    WorkerID     string // "zhangsan", "cc-connect", "owner"
+    WorkerID     string // "zhangsan", "cc-connect", "principal"
     ProjectID    string // "P1"; 根项目 = "org"
     ItemID       string // "I12"
     AssignmentID string // "A7"
@@ -68,7 +68,7 @@ type (
 type Actor struct {
     UserID string    // 平台身份（人发起时）
     Worker WorkerID  // 如果他同时是 worker
-    Role   Role      // owner | admin | member | visitor | system
+    Role   Role      // principal | admin | member | visitor | system
     Via    string    // "chat" | "brain:L2" | "brain:L3" | "rule:overdue" | "cli"
 }
 
@@ -109,7 +109,7 @@ type Worker struct {
     Trust       Trust
     Description string
     Skills      []string
-    Principal   string        // owner | self | 对方主人
+    Principal   string        // principal | self | 对方委托人
     Interaction Interaction   // 能否续上下文 / 反问 / 拒绝 / 还价 / 主动报进度
     Contact     []Route       // 触达路线（升级顺序），值对象
     Norms       Norms         // 工作时间、静默时段、提醒上限、接谁的活
@@ -229,7 +229,7 @@ type Item struct {
     Priority   *Priority     // 为空则继承项目
     DependsOn  []ItemID
     Status     Status
-    Owner      WorkerID      // 当前负责的人力（由委托决定）
+    Assignee   WorkerID      // 当前负责的人力（由委托决定）
     Assignment AssignmentID  // 当前有效委托
     Blocked    *Blocker      // 值对象：卡在什么、从何时起
     Signals    Activity      // 值对象：开始时间、最近进展时间
@@ -245,7 +245,7 @@ func (i *Item) Reschedule(due time.Time, by Actor) []DomainEvent
 func (i *Item) Attach(a AssignmentID, w WorkerID) []DomainEvent
 func (i *Item) Detach(reason string) []DomainEvent            // 委托结束且未完成 → 回到 todo
 func (i *Item) Block(b Blocker) []DomainEvent
-func (i *Item) Complete(by Actor) ([]DomainEvent, error)      // 只有已验收的委托或主人可以完成
+func (i *Item) Complete(by Actor) ([]DomainEvent, error)      // 只有已验收的委托或委托人可以完成
 func (i *Item) Drop(by Actor, reason string) []DomainEvent
 
 func (i Item) Open() bool
@@ -299,7 +299,7 @@ func (a Assignment) LastSignOfLife() time.Time
 func (a Assignment) NudgesSince(t time.Time) []time.Time
 ```
 
-**不变量**：状态转换合法；只有被委托方能接受 / 拒绝 / 还价 / 交付；只有请求方（或主人）能验收 / 返工 / 取消；
+**不变量**：状态转换合法；只有被委托方能接受 / 拒绝 / 还价 / 交付；只有请求方（或委托人）能验收 / 返工 / 取消；
 一个 Item 同时最多一个未结束的委托（由应用层查询仓库保证）。
 
 ### 4.5 Attention（注意力）
@@ -441,7 +441,7 @@ type Interpretation struct {
     Intent      string              // chat | status | new_request | reply | plan_change | approval | other
     Reply       *ReplyIntent        // 对哪个委托、什么动作、可能的时间
     Urgent      float64
-    NeedsDepth  string              // fast | deep | owner
+    NeedsDepth  string              // fast | deep | principal
     Confidence  float64
 }
 type Interpreter interface {
@@ -477,7 +477,7 @@ type Orchestrator struct {
 func (o *Orchestrator) Handle(ctx context.Context, t Trigger) error
 ```
 
-`ActorView`：按调用者权限裁剪后的世界视图（主人看全部；被派活的人只看自己的委托；访客只看公开信息）。
+`ActorView`：按调用者权限裁剪后的世界视图（委托人看全部；被派活的人只看自己的委托；访客只看公开信息）。
 **权限在组装视图和执行命令两处检查**，大脑拿到的从来不是全量数据。
 
 ### 4.8 Communication（沟通）
@@ -564,7 +564,7 @@ type Guard interface {
 }
 ```
 
-例：被派活的人只能对**自己的**委托 `Respond`；访客不能发任何改状态的命令；对外部 worker 派活需主人或项目负责人。
+例：被派活的人只能对**自己的**委托 `Respond`；访客不能发任何改状态的命令；对外部 worker 派活需委托人或项目负责人。
 
 ### 6.3 仓库与工作单元
 
@@ -630,7 +630,7 @@ cadence.due
 | 理由 | 含义 | 例子 | 通常找谁 |
 |---|---|---|---|
 | `approval` 权限 / 审批 | 规则要求人批准，或动作不可逆 / 有风险 | 合并到主干、生产发布、花钱、对外发布、开权限、删数据 | 规则里的审批人（角色解析到人） |
-| `decision` 决策 / 澄清 | 需求有歧义；取舍涉及成本、优先级、价值判断；目标冲突 | 换区域还是加重试（涉及费用）；“上线”指灰度还是全量 | 主人或项目负责人 |
+| `decision` 决策 / 澄清 | 需求有歧义；取舍涉及成本、优先级、价值判断；目标冲突 | 换区域还是加重试（涉及费用）；“上线”指灰度还是全量 | 委托人或项目负责人 |
 | `physical` 现实世界动作 | 需要人的身体、身份或在场 | 给客户打电话、签字、到场、拍视频、采购 | 能做该动作的人 |
 | `capability` 能力缺口 | 没有任何 agent 拥有所需的工具、系统访问或凭证 | 只能在后台网页操作的系统；需要 2FA；供应商门户 | 有该系统权限的人 |
 | `relationship` 代表与关系 | 需要以人的身份与外部的人沟通，关系本身重要 | 回复客户投诉、和合作方谈条件 | 对接人（agent 可起草） |
@@ -644,9 +644,9 @@ cadence.due
 | 由框架硬性保证（代码） | 由 L1 判断（Jev） | 由 L3 推理 |
 |---|---|---|
 | 审批规则：动作执行前检查，命中就自动生成审批委托，agent 不能绕过 | 某个请求 / 步骤是否涉及审批、现实动作、对外沟通（noul） | 把一件事拆成“agent 能做的”和“必须人做的”两部分 |
-| 能力匹配：哪个 agent 拥有所需系统与权限（读档案） | agent 反问的原因属于哪一类（choice） | 能自己决定的就决定（依据主人的长期指示），需要人时把问题缩到最小、给选项 |
+| 能力匹配：哪个 agent 拥有所需系统与权限（读档案） | agent 反问的原因属于哪一类（choice） | 能自己决定的就决定（依据委托人的长期指示），需要人时把问题缩到最小、给选项 |
 | 审批人解析：规则里的角色 → 当前担任该角色的人（考虑时间段与状态） | 候选人与需求的职责匹配度（score，语义层面的补充） | 选谁（在框架给出的候选里），以及怎么开口 |
-| 找人顺序：候选列表里 agent 排在人前面；交给人必须填 `Why`，否则命令被拒 | — | 什么时候升级：等太久就换人或找主人 |
+| 找人顺序：候选列表里 agent 排在人前面；交给人必须填 `Why`，否则命令被拒 | — | 什么时候升级：等太久就换人或找委托人 |
 | 人的规矩：工作时间、提醒上限、同意范围 | — | — |
 
 大脑从一开始就知道这些边界：协议里有“何时找人”的固定说明（上表的理由与原则）；简报里带上**与当前事项相关的**
@@ -734,15 +734,15 @@ batch_every    = "30m"        # 批量唤醒的间隔（也是“心跳”）
 ### 7A.4 一个连续的会话，权限跟着每一轮走
 
 PM 要找人干活、向人咨询、在多个人之间协调，按人拆开会话就会丢上下文（实测：拆开后同一个还价被两边各处理一次，
-主会话在主人回复前就“替主人同意”了）。所以采用**一个连续的主会话**：所有人的消息和框架的信号都进来，大脑始终有全貌。
+主会话在委托人回复前就“替委托人同意”了）。所以采用**一个连续的主会话**：所有人的消息和框架的信号都进来，大脑始终有全貌。
 
 隐私不再靠拆记忆，而是靠两层保证：
 
 - **权限跟着这一轮的对象（硬）**：每次唤醒的工具权限取焦点信号的发起人——处理王五的消息时，这一轮只有王五的权限
-  （只能操作他自己的委托，不能审批、不能改派）；主人侧（主人、管理员、框架信号）与其他人的信号**绝不放进同一轮**；
+  （只能操作他自己的委托，不能审批、不能改派）；委托人侧（委托人、管理员、框架信号）与其他人的信号**绝不放进同一轮**；
   回复回到信号的来源会话。由代码保证，不依赖大脑。
 - **说话只给对方需要的（软）**：大脑记得别的对话，所以给同事回复时可能多说；由协议约束，之后由 L1 判断在发出前检查
-  发给非主人的消息是否泄露了别人的工作、别的项目或主人的对话。
+  发给非委托人的消息是否泄露了别人的工作、别的项目或委托人的对话。
 
 需要严格隔离的场景可以配置 `isolate_visitors = true`：同事的对话回到各自独立的会话（记忆分开）。
 
@@ -756,7 +756,7 @@ reply(signal, message)          # 回复某条信号的来源（私聊、群、�
 ```
 
 框架负责其余一切：从这个人的联系方式里按紧急度与时间选渠道（飞书私聊 → 飞书加急 → 电话 / 邮件），
-遵守工作时间、静默时段、提醒上限、需要主人批准的渠道；记录送达；对方的回复作为信号回到收件箱并关联到 `about`。
+遵守工作时间、静默时段、提醒上限、需要委托人批准的渠道；记录送达；对方的回复作为信号回到收件箱并关联到 `about`。
 大脑的上下文里不出现渠道、地址、重试这些细节。
 
 ## 8. 附录：一次完整的执行流程
@@ -771,11 +771,11 @@ reply(signal, message)          # 回复某条信号的来源（私聊、群、�
   - Jerry：业务方，问题报告人；
   - agent `tapnow-dev`（worktree 模板，`Capabilities: repo:tapnow write`）；
   - agent `ops-reader`（`Capabilities: gcloud-logging read, metrics read`）。
-- 公司级审批规则：`merge:main` 需要 code owner 批准；`deploy:prod` 需要 on-call 批准；涉及费用的变更需要主人决定（主人的长期指示）。
+- 公司级审批规则：`merge:main` 需要 code owner 批准；`deploy:prod` 需要 on-call 批准；涉及费用的变更需要委托人决定（委托人的长期指示）。
 
-### 8.1 主人：“Jerry 说线上 view_media 从 10/4 起偶发 Vertex 500，定位一下，今天能修好最好”
+### 8.1 委托人：“Jerry 说线上 view_media 从 10/4 起偶发 Vertex 500，定位一下，今天能修好最好”
 
-**框架**：识别主人身份；把“今天”换算成截止 10/14 23:00；组装 P3 的项目卡与相关审批规则；
+**框架**：识别委托人身份；把“今天”换算成截止 10/14 23:00；组装 P3 的项目卡与相关审批规则；
 按能力匹配给出候选——读日志：`ops-reader`；改代码：`tapnow-dev`；没有 agent 能做 `deploy:prod`。
 
 **L1 判断**：新需求；属于 P3；需要深想。→ 快脑先回“收到，我先让人查日志”，深脑开始拆解。
@@ -798,9 +798,9 @@ agent 的结论：10/4 起 Vertex 某区域配额收紧，高峰期 500。两种
 B）加退避重试 + 降级到备用模型（不增加费用，延迟略增）。
 
 **L1 判断**：这是带选项的交付；涉及费用 → `decision`。
-**框架**：主人的长期指示规定“涉及费用的决定要问我”；生成一个 `Kind=decision, Why=decision, Options=[A, B]` 的委托给主人。
+**框架**：委托人的长期指示规定“涉及费用的决定要问我”；生成一个 `Kind=decision, Why=decision, Options=[A, B]` 的委托给委托人。
 **L3 推理**：写清两个选项的影响并给推荐（B，先止血；A 作为后续评估）。
-**主人**：在卡片上点“B”。→ I32 的任务说明更新为方案 B，`tapnow-dev` 开始实现。
+**委托人**：在卡片上点“B”。→ I32 的任务说明更新为方案 B，`tapnow-dev` 开始实现。
 
 ### 8.3 `tapnow-dev` 提交 PR，CI 通过，想合并
 
@@ -810,7 +810,7 @@ B）加退避重试 + 降级到备用模型（不增加费用，延迟略增）�
 **李四**：回复“LGTM”。**L1**：属于对审批委托的回复，动作是“批准”（0.95）。**框架**：登记批准，合并动作放行。
 
 > 如果李四两小时没回、而截止是今天：规则产生 `waiting_on_human` 信号且分数很高 → 深脑在候选里找另一个有
-> `merge:main` 权限的人，或请主人决定是否等待。
+> `merge:main` 权限的人，或请委托人决定是否等待。
 
 ### 8.4 生产发布
 
@@ -823,13 +823,13 @@ B）加退避重试 + 降级到备用模型（不增加费用，延迟略增）�
 `ops-reader` 对比发布前后的 500 比例（证据：指标截图与数据）→ 交付。
 **L3**：按完成标准核对：500 比例回到 10/4 之前的水平，满足。
 **框架**：给 Jerry 发一个 `Kind=review, Why=judgment` 的确认请求（“你那边还有报错吗？”）。Jerry 回复“没再出现了”。
-→ I35 验收，P3 记录事件闭环；`ops-reader`、`tapnow-dev` 的速度统计更新；主人收到一条结论消息。
+→ I35 验收，P3 记录事件闭环；`ops-reader`、`tapnow-dev` 的速度统计更新；委托人收到一条结论消息。
 
 ### 8.6 这件事里谁被打扰了、为什么
 
 | 人 | 理由 | 被打扰几次 |
 |---|---|---|
-| 主人 | `decision`：涉及费用的取舍 | 1 次（一键选择）+ 1 条结论 |
+| 委托人 | `decision`：涉及费用的取舍 | 1 次（一键选择）+ 1 条结论 |
 | 李四 | `approval`：合并到主干 | 1 次 |
 | 王五 | `approval`：生产发布 | 1 次 |
 | Jerry | `judgment`：报障人确认 | 1 次 |
@@ -845,11 +845,11 @@ B）加退避重试 + 降级到备用模型（不增加费用，延迟略增）�
 |---|---|---|---|---|
 | `Worker` 档案（含能力、权限） | 他 / 它能做什么、有权批准什么 | 配置 | 很少 | 11.1 决定哪些 agent 能闭环；11.3、11.4 解析审批人 |
 | `WorkerState` | 现在能不能找 | 观测 / 声明 / 推断 | 随时 | 11.3 李四可联系、负载 3 件 |
-| `Project`（成员、规则、节奏） | 这里谁负责什么、什么需要批准 | 主人 / 深脑 | 偶尔 | “本周 on-call 是王五”随时间段变化；规则从公司继承 |
+| `Project`（成员、规则、节奏） | 这里谁负责什么、什么需要批准 | 委托人 / 深脑 | 偶尔 | “本周 on-call 是王五”随时间段变化；规则从公司继承 |
 | `Item`（含 Needs、依赖） | 要做什么、需要什么、什么顺序 | 深脑拆解 | 偶尔 | 5 个事项、依赖链、哪些需要人 |
 | `Assignment`（含 Kind、Why） | 谁答应了做什么、为什么是他 | 双方 | 频繁 | 决定 / 审批 / 确认都是委托，可一键回复，理由可审计 |
 | 信号（不存） | 现在什么需要注意 | 规则 | 每次巡检重算 | 李四不回 → `waiting_on_human` |
-| 处理记录 | 这件事怎么处理过 | 大脑 / 主人 | 每次处理 | 避免重复打扰、到点重现 |
+| 处理记录 | 这件事怎么处理过 | 大脑 / 委托人 | 每次处理 | 避免重复打扰、到点重现 |
 | 事件 | 发生过什么 | 各聚合 | 只追加 | 依赖完成 → 派出下游；更新速度统计；审计 |
 
 几个关键的拆分理由：
@@ -868,7 +868,7 @@ B）加退避重试 + 降级到备用模型（不增加费用，延迟略增）�
 |---|---|---|
 | `WorkerDriver` | 新 worker 类型 | agent 会话；人；（agentflow、bot、A2A） |
 | `Channel` / `DirectMessenger` | 新聊天平台 | 飞书 SDK、lark-cli、console |
-| `Reacher` | 新触达方式 | 飞书私聊、主人私聊；（加急、邮件、电话） |
+| `Reacher` | 新触达方式 | 飞书私聊、委托人私聊；（加急、邮件、电话） |
 | `Brain` | 新的 L2 / L3 大脑 | claudecode、codex、pi、command |
 | `Judge` | 新的 L1 判断模型 | Jev；LLM 结构化输出；规则启发式 |
 | `Detector` | 新的注意力规则 | 逾期、预计延期、在等我们… |
@@ -905,7 +905,7 @@ internal/
     store/jsonfile/       仓库 + 工作单元
     drivers/agentsession/ drivers/human/  (drivers/agentflow/ drivers/a2a/)
     channels/feishu/ channels/larkcli/ channels/console/
-    reach/         私聊、主人私聊（加急、邮件…）
+    reach/         私聊、委托人私聊（加急、邮件…）
     brains/        claudecode、codex、pi、command
     judges/        jev、llm、heuristic
   tools/           工具 = 命令 / 查询的薄封装（MCP、REST、CLI 共用）

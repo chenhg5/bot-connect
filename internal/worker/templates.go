@@ -59,11 +59,11 @@ func (m *Manager) inUseLocked(tpl string) int {
 }
 
 // CreateFromTemplate creates (and starts) a worker from a template. Only
-// owners/admins may, and only from templates the scope allows; the template
+// principals/admins may, and only from templates the scope allows; the template
 // fixes what the worker may do.
 func (m *Manager) CreateFromTemplate(tpl string, o CreateOptions, s Scope) (WorkerInfo, error) {
 	if !s.Caller.Role.Privileged() {
-		return WorkerInfo{}, fmt.Errorf("permission denied: only the owner or an admin can create workers")
+		return WorkerInfo{}, fmt.Errorf("permission denied: only the principal or an admin can create workers")
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()

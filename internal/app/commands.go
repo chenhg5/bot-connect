@@ -12,12 +12,12 @@ import (
 	"github.com/chenhg5/bot-connect/internal/domain/workforce"
 )
 
-// requirePrivileged: owner, admin, or the scaffold itself.
+// requirePrivileged: principal, admin, or the scaffold itself.
 func requirePrivileged(by Actor, what string) error {
 	if by.Privileged() || by.Role == RoleSystem {
 		return nil
 	}
-	return Forbidden("only the owner or an admin can %s", what)
+	return Forbidden("only the principal or an admin can %s", what)
 }
 
 // ---- workers ----
@@ -57,8 +57,8 @@ func (a *App) WorkerFor(ids ...string) (WorkerID, bool) {
 // ResolveWorker finds a worker by id or by name (exact, then unique partial).
 func (a *App) ResolveWorker(s string) (WorkerID, error) {
 	s = strings.TrimSpace(s)
-	if s == "me" || s == "主人" || s == "我" {
-		return Owner, nil
+	if s == "me" || s == "委托人" || s == "我" {
+		return Principal, nil
 	}
 	var exact, partial []WorkerID
 	a.Store.Read(func(st *State) {
@@ -337,7 +337,7 @@ func (a *App) DropItem(ctx context.Context, by Actor, id ItemID, reason string) 
 	return err
 }
 
-// CompleteItem: the owner decides an item is done without a delivery.
+// CompleteItem: the principal decides an item is done without a delivery.
 func (a *App) CompleteItem(ctx context.Context, by Actor, id ItemID) error {
 	_, err := a.commit(ctx, func(s *State) ([]Event, error) {
 		it, ok := s.Items[id]

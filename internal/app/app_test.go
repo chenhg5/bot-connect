@@ -49,8 +49,8 @@ type rig struct {
 }
 
 var (
-	ctx   = context.Background()
-	owner = Actor{UserID: "u-owner", Worker: Owner, Role: RoleOwner}
+	ctx       = context.Background()
+	principal = Actor{UserID: "u-principal", Worker: Principal, Role: RolePrincipal}
 )
 
 func t0() time.Time { return time.Date(2026, 10, 14, 10, 0, 0, 0, time.UTC) } // Tuesday
@@ -84,10 +84,10 @@ func newRig(t *testing.T, store app.Store) *rig {
 			r.dms = append(r.dms, addr+": "+text)
 			return "m", nil
 		}),
-		human.OwnerChat: human.ReacherFunc(func(_ context.Context, addr, text string, _ workforce.Urgency) (string, error) {
+		human.PrincipalChat: human.ReacherFunc(func(_ context.Context, addr, text string, _ workforce.Urgency) (string, error) {
 			r.mu.Lock()
 			defer r.mu.Unlock()
-			r.dms = append(r.dms, "owner: "+text)
+			r.dms = append(r.dms, "principal: "+text)
 			return "m", nil
 		}),
 	}})
@@ -98,33 +98,33 @@ func newRig(t *testing.T, store app.Store) *rig {
 	})
 
 	must(t, a.EnsureOrg(ctx, "公司"))
-	ownerW := person(Owner, true)
-	ownerW.Contact = []workforce.Route{{Kind: human.OwnerChat, Address: "owner"}}
-	ownerW.Norms = workforce.Norms{}
-	for _, w := range []workforce.Worker{ownerW, person("lisi", true), person("wangwu", true), person("zhaoliu", true), person("jerry", true),
+	principalW := person(Principal, true)
+	principalW.Contact = []workforce.Route{{Kind: human.PrincipalChat, Address: "principal"}}
+	principalW.Norms = workforce.Norms{}
+	for _, w := range []workforce.Worker{principalW, person("lisi", true), person("wangwu", true), person("zhaoliu", true), person("jerry", true),
 		agentW("tapnow-dev", "repo:tapnow:write"), agentW("ops-reader", "gcloud-logging:read", "metrics:read")} {
-		must(t, a.UpsertWorker(ctx, owner, w))
+		must(t, a.UpsertWorker(ctx, principal, w))
 	}
 	day := func(d int) *time.Time { x := time.Date(2026, 10, d, 0, 0, 0, 0, time.UTC); return &x }
-	_, err := a.ChangeProject(ctx, owner, OrgProject, func(p *portfolio.Project, now time.Time) ([]Event, error) {
+	_, err := a.ChangeProject(ctx, principal, OrgProject, func(p *portfolio.Project, now time.Time) ([]Event, error) {
 		var evs []Event
 		for _, r := range []portfolio.ApprovalRule{{Action: "deploy:prod", Approvers: []string{"oncall"}},
 			{Action: "merge:main", Scope: "repo:tapnow", Approvers: []string{"code_owner"}}} {
-			e, err := p.SetPolicy(r, now, owner)
+			e, err := p.SetPolicy(r, now, principal)
 			if err != nil {
 				return nil, err
 			}
 			evs = append(evs, e...)
 		}
-		return p.AddMember(portfolio.Membership{Worker: "lisi", Role: "code_owner", Duties: []string{"媒体服务"}}, now, owner)
+		return p.AddMember(portfolio.Membership{Worker: "lisi", Role: "code_owner", Duties: []string{"媒体服务"}}, now, principal)
 	})
 	must(t, err)
-	_, err = a.CreateProject(ctx, owner, app.ProjectSpec{ID: "P3", Title: "TapNow 稳定性", Priority: P0, Home: "chat-p3"})
+	_, err = a.CreateProject(ctx, principal, app.ProjectSpec{ID: "P3", Title: "TapNow 稳定性", Priority: P0, Home: "chat-p3"})
 	must(t, err)
-	_, err = a.ChangeProject(ctx, owner, "P3", func(p *portfolio.Project, now time.Time) ([]Event, error) {
-		p.AddMember(portfolio.Membership{Worker: "zhaoliu", Role: "oncall", Period: Period{From: day(6), Until: day(13)}}, now, owner)
-		p.AddMember(portfolio.Membership{Worker: "wangwu", Role: "oncall", Period: Period{From: day(13), Until: day(20)}}, now, owner)
-		return p.AddMember(portfolio.Membership{Worker: "jerry", Role: "业务方", Duties: []string{"报障", "验收效果"}}, now, owner)
+	_, err = a.ChangeProject(ctx, principal, "P3", func(p *portfolio.Project, now time.Time) ([]Event, error) {
+		p.AddMember(portfolio.Membership{Worker: "zhaoliu", Role: "oncall", Period: Period{From: day(6), Until: day(13)}}, now, principal)
+		p.AddMember(portfolio.Membership{Worker: "wangwu", Role: "oncall", Period: Period{From: day(13), Until: day(20)}}, now, principal)
+		return p.AddMember(portfolio.Membership{Worker: "jerry", Role: "业务方", Duties: []string{"报障", "验收效果"}}, now, principal)
 	})
 	must(t, err)
 	return r
@@ -162,7 +162,7 @@ func TestVertex500FlowThroughCommands(t *testing.T) {
 	a := r.app
 	due := t0().Add(13 * time.Hour)
 	plan := func(title string, est time.Duration, needs []planning.Need, deps ...ItemID) planning.Item {
-		it, err := a.PlanItem(ctx, owner, planning.Spec{Project: "P3", Title: title, Due: &due, Estimate: est, Needs: needs, DependsOn: deps})
+		it, err := a.PlanItem(ctx, principal, planning.Spec{Project: "P3", Title: title, Due: &due, Estimate: est, Needs: needs, DependsOn: deps})
 		must(t, err)
 		return it
 	}
@@ -170,42 +170,42 @@ func TestVertex500FlowThroughCommands(t *testing.T) {
 	i32 := plan("修复并提 PR", 3*time.Hour, []planning.Need{{Kind: NeedCapability, Detail: "repo:tapnow:write"}}, i31.ID)
 
 	// Agents first: giving log reading to a person "for capability" is refused.
-	if _, err := a.Delegate(ctx, owner, app.DelegateSpec{Item: i31.ID, Worker: "lisi", Why: NeedCapability}); err == nil || !strings.Contains(err.Error(), "ops-reader") {
+	if _, err := a.Delegate(ctx, principal, app.DelegateSpec{Item: i31.ID, Worker: "lisi", Why: NeedCapability}); err == nil || !strings.Contains(err.Error(), "ops-reader") {
 		t.Fatalf("agent-first not enforced: %v", err)
 	}
-	if _, err := a.Delegate(ctx, owner, app.DelegateSpec{Item: i31.ID, Worker: "lisi"}); err == nil {
+	if _, err := a.Delegate(ctx, principal, app.DelegateSpec{Item: i31.ID, Worker: "lisi"}); err == nil {
 		t.Fatal("a person without a reason")
 	}
-	as31, err := a.Delegate(ctx, owner, app.DelegateSpec{Item: i31.ID, Worker: "ops-reader"})
+	as31, err := a.Delegate(ctx, principal, app.DelegateSpec{Item: i31.ID, Worker: "ops-reader"})
 	must(t, err)
 	if as31.Status != delegation.Accepted || as31.Ref == "" {
 		t.Fatalf("agent accepted at once: %+v", as31)
 	}
-	if _, err := a.Delegate(ctx, owner, app.DelegateSpec{Item: i31.ID, Worker: "tapnow-dev"}); err == nil {
+	if _, err := a.Delegate(ctx, principal, app.DelegateSpec{Item: i31.ID, Worker: "tapnow-dev"}); err == nil {
 		t.Fatal("two open assignments on one item")
 	}
 
-	// ops-reader delivers a finding with two options: a decision for the owner.
+	// ops-reader delivers a finding with two options: a decision for the principal.
 	must(t, a.Report(ctx, System("driver:agent"), as31.ID, app.Report{Action: "deliver", Result: "Vertex 区域配额收紧", Evidence: []string{"logs://q"}}))
 	if w := r.lastWake(); w.ReplyConv != "chat-p3" || !strings.Contains(wakeText(w), "等待验收") {
 		t.Fatalf("delivery wakes the brain in the project's chat: %+v", w)
 	}
-	must(t, a.Review(ctx, owner, as31.ID, "verify", ""))
-	dec, err := a.Delegate(ctx, owner, app.DelegateSpec{Item: i32.ID, Worker: Owner, Kind: delegation.Decision, Why: NeedDecision,
+	must(t, a.Review(ctx, principal, as31.ID, "verify", ""))
+	dec, err := a.Delegate(ctx, principal, app.DelegateSpec{Item: i32.ID, Worker: Principal, Kind: delegation.Decision, Why: NeedDecision,
 		Options: []string{"A 换区域（+2000/月）", "B 重试+降级"}, Brief: delegation.Brief{Goal: "选修复方案"}})
 	must(t, err)
-	if !strings.HasPrefix(r.lastDM(), "owner: 🤔") || !strings.Contains(r.lastDM(), "B 重试+降级") {
-		t.Fatalf("decision sent to the owner with options: %s", r.lastDM())
+	if !strings.HasPrefix(r.lastDM(), "principal: 🤔") || !strings.Contains(r.lastDM(), "B 重试+降级") {
+		t.Fatalf("decision sent to the principal with options: %s", r.lastDM())
 	}
-	must(t, a.Report(ctx, owner, dec.ID, app.Report{Action: "answer", Choice: "B 重试+降级"}))
+	must(t, a.Report(ctx, principal, dec.ID, app.Report{Action: "answer", Choice: "B 重试+降级"}))
 	var child planning.Item
 	r.app.Store.Read(func(s *app.State) { child = s.Items[dec.Item] })
 	if child.Parent != i32.ID || child.Status != planning.Done {
 		t.Fatalf("the decision lives on a child item and closes it: %+v", child)
 	}
 
-	// tapnow-dev fixes it; merging needs the code owner's approval.
-	as32, err := a.Delegate(ctx, owner, app.DelegateSpec{Item: i32.ID, Worker: "tapnow-dev", Brief: delegation.Brief{Goal: "按方案 B 修复并提 PR"}})
+	// tapnow-dev fixes it; merging needs the code principal's approval.
+	as32, err := a.Delegate(ctx, principal, app.DelegateSpec{Item: i32.ID, Worker: "tapnow-dev", Brief: delegation.Brief{Goal: "按方案 B 修复并提 PR"}})
 	must(t, err)
 	g, err := a.Authorize(ctx, System("driver:agent"), i32.ID, "merge:main", "repo:tapnow", "PR #12，CI 通过")
 	must(t, err)
@@ -230,7 +230,7 @@ func TestVertex500FlowThroughCommands(t *testing.T) {
 		t.Fatalf("deploy approval goes to this week's on-call: %+v", gd)
 	}
 	must(t, a.Report(ctx, System("driver:agent"), as32.ID, app.Report{Action: "deliver", Result: "已合并并发布"}))
-	must(t, a.Review(ctx, owner, as32.ID, "verify", ""))
+	must(t, a.Review(ctx, principal, as32.ID, "verify", ""))
 	var it32 planning.Item
 	r.app.Store.Read(func(s *app.State) { it32 = s.Items[i32.ID] })
 	if it32.Status != planning.Done {
@@ -244,9 +244,9 @@ func TestVertex500FlowThroughCommands(t *testing.T) {
 func TestPeopleFollowUpsAndExpiry(t *testing.T) {
 	r := newRig(t, jsonstore.Memory())
 	a := r.app
-	it, err := a.PlanItem(ctx, owner, planning.Spec{Project: "P3", Title: "确认问题消失"})
+	it, err := a.PlanItem(ctx, principal, planning.Spec{Project: "P3", Title: "确认问题消失"})
 	must(t, err)
-	as, err := a.Delegate(ctx, owner, app.DelegateSpec{Item: it.ID, Worker: "jerry", Kind: delegation.Work, Why: NeedJudgment})
+	as, err := a.Delegate(ctx, principal, app.DelegateSpec{Item: it.ID, Worker: "jerry", Kind: delegation.Work, Why: NeedJudgment})
 	must(t, err)
 	n := len(r.dms)
 	r.clock.Advance(5 * time.Hour) // 15:00
@@ -276,7 +276,7 @@ func TestSignalsRaiseOnceThenEscalate(t *testing.T) {
 	r := newRig(t, jsonstore.Memory())
 	a := r.app
 	due := t0().Add(2 * time.Hour)
-	_, err := a.PlanItem(ctx, owner, planning.Spec{Project: "P3", Title: "发版", Due: &due, Estimate: 4 * time.Hour})
+	_, err := a.PlanItem(ctx, principal, planning.Spec{Project: "P3", Title: "发版", Due: &due, Estimate: 4 * time.Hour})
 	must(t, err)
 	a.Tick(ctx)
 	w := r.lastWake()
@@ -294,14 +294,14 @@ func TestSignalsRaiseOnceThenEscalate(t *testing.T) {
 	a.Tick(ctx)
 	escalated := false
 	for _, d := range r.dms[dms:] {
-		escalated = escalated || (strings.HasPrefix(d, "owner: ⚠️") && strings.Contains(d, "没有处理"))
+		escalated = escalated || (strings.HasPrefix(d, "principal: ⚠️") && strings.Contains(d, "没有处理"))
 	}
 	if !escalated {
-		t.Fatalf("an unhandled high risk goes straight to the owner: %v", r.dms[dms:])
+		t.Fatalf("an unhandled high risk goes straight to the principal: %v", r.dms[dms:])
 	}
 	// Handling every open signal empties the inbox; nothing comes back.
 	for _, x := range a.Inbox(false) {
-		must(t, a.UpdateSignal(ctx, owner, x.ID, inbox.Handled, "已和需求方确认延期", nil))
+		must(t, a.UpdateSignal(ctx, principal, x.ID, inbox.Handled, "已和需求方确认延期", nil))
 	}
 	if len(a.Inbox(false)) != 0 {
 		t.Fatal("inbox should be empty")
@@ -317,17 +317,17 @@ func TestSignalsRaiseOnceThenEscalate(t *testing.T) {
 func TestInboxDedupeDeferAndBatch(t *testing.T) {
 	r := newRig(t, jsonstore.Memory())
 	a := r.app
-	spec := app.SignalSpec{Dedupe: "feishu:om_1", Source: inbox.DirectMessage, Reason: "dm", Actor: owner, Summary: "在吗", ReplyTo: inbox.ReplyTo{Conv: "dm-owner"}}
+	spec := app.SignalSpec{Dedupe: "feishu:om_1", Source: inbox.DirectMessage, Reason: "dm", Actor: principal, Summary: "在吗", ReplyTo: inbox.ReplyTo{Conv: "dm-principal"}}
 	s1, created, err := a.Ingest(ctx, spec)
 	must(t, err)
-	if !created || r.lastWake().ReplyConv != "dm-owner" || r.lastWake().Signals[0].ID != s1.ID {
+	if !created || r.lastWake().ReplyConv != "dm-principal" || r.lastWake().Signals[0].ID != s1.ID {
 		t.Fatalf("a direct message wakes the brain, replying where it came from: %+v", r.lastWake())
 	}
 	if _, created, _ := a.Ingest(ctx, spec); created {
 		t.Fatal("the same message is one signal")
 	}
 	later := r.clock.Now().Add(time.Hour)
-	must(t, a.UpdateSignal(ctx, owner, s1.ID, inbox.Deferred, "先处理风险", &later))
+	must(t, a.UpdateSignal(ctx, principal, s1.ID, inbox.Deferred, "先处理风险", &later))
 	if len(a.Inbox(false)) != 0 {
 		t.Fatal("deferred signals leave the inbox until their time")
 	}
@@ -353,7 +353,7 @@ func TestInboxDedupeDeferAndBatch(t *testing.T) {
 	if !found {
 		t.Fatalf("batched signal handled in a batch wake-up: %+v", r.wakes[n:])
 	}
-	if _, err := a.Contact(ctx, owner, "jerry", "你那边还有报错吗？", workforce.Normal, true, inbox.Refs{Project: "P3"}); err != nil {
+	if _, err := a.Contact(ctx, principal, "jerry", "你那边还有报错吗？", workforce.Normal, true, inbox.Refs{Project: "P3"}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.HasPrefix(r.lastDM(), "ou_jerry: 你那边还有报错吗") || len(a.OpenContacts("jerry")) != 1 {
@@ -364,7 +364,7 @@ func TestInboxDedupeDeferAndBatch(t *testing.T) {
 	if sig.Source != inbox.Relay || sig.Refs.Project != "P3" || len(a.OpenContacts("jerry")) != 0 {
 		t.Fatalf("a reply to a contact comes back as a signal about the same thing: %+v", sig)
 	}
-	if _, err := a.Contact(ctx, owner, "tapnow-dev", "hi", workforce.Normal, false, inbox.Refs{}); err == nil {
+	if _, err := a.Contact(ctx, principal, "tapnow-dev", "hi", workforce.Normal, false, inbox.Refs{}); err == nil {
 		t.Fatal("agents are contacted through delegate / agent_task")
 	}
 }
@@ -374,10 +374,10 @@ func TestPersistenceAndAtomicity(t *testing.T) {
 	st, err := jsonstore.Open(path)
 	must(t, err)
 	r := newRig(t, st)
-	if _, err := r.app.PlanItem(ctx, owner, planning.Spec{Project: "nope", Title: "x"}); err == nil {
+	if _, err := r.app.PlanItem(ctx, principal, planning.Spec{Project: "nope", Title: "x"}); err == nil {
 		t.Fatal("unknown project")
 	}
-	it, err := r.app.PlanItem(ctx, owner, planning.Spec{Project: "P3", Title: "x"})
+	it, err := r.app.PlanItem(ctx, principal, planning.Spec{Project: "P3", Title: "x"})
 	must(t, err)
 	if _, err := r.app.PlanItem(ctx, Actor{Role: RoleVisitor}, planning.Spec{Project: "P3", Title: "y"}); err == nil {
 		t.Fatal("visitors can't plan")
@@ -396,9 +396,9 @@ func TestPromiseBeforeDueIsAccept(t *testing.T) {
 	r := newRig(t, jsonstore.Memory())
 	a := r.app
 	due := t0().Add(72 * time.Hour)
-	it, err := a.PlanItem(ctx, owner, planning.Spec{Project: "P3", Title: "埋点方案", Due: &due})
+	it, err := a.PlanItem(ctx, principal, planning.Spec{Project: "P3", Title: "埋点方案", Due: &due})
 	must(t, err)
-	as, err := a.Delegate(ctx, owner, app.DelegateSpec{Item: it.ID, Worker: "jerry", Why: NeedKnowledge})
+	as, err := a.Delegate(ctx, principal, app.DelegateSpec{Item: it.ID, Worker: "jerry", Why: NeedKnowledge})
 	must(t, err)
 	sooner := t0().Add(24 * time.Hour)
 	must(t, a.Report(ctx, Actor{Worker: "jerry"}, as.ID, app.Report{Action: "counter", Due: &sooner}))

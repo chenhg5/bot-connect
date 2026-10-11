@@ -1,5 +1,5 @@
 id = "G6"
-title = "还价：说明影响请主人决定，不自作主张"
+title = "还价：说明影响请委托人决定，不自作主张"
 critical = false
 now = "2026-10-12 10:00"
 
@@ -33,9 +33,9 @@ say = "这周排不过来，下周一可以吗"
   type = "assignment"
   worker = "wangwu"
   status = "countered"
-  why = "登记为还价，等主人决定"
+  why = "登记为还价，等委托人决定"
   [[steps.expect]]
   type = "reply"
-  to = "owner"
+  to = "principal"
   contains_any = ["下周一", "10-19", "10/19", "19"]
-  why = "把提议的时间告诉主人"
+  why = "把提议的时间告诉委托人"

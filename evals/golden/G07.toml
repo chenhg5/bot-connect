@@ -35,6 +35,6 @@ result = "首页桌面端页面已完成，PR #12 已提交，CI 通过。"
   why = "缺移动端，不能验收通过"
   [[steps.expect]]
   type = "reply"
-  to = "owner"
+  to = "principal"
   contains_any = ["移动端"]
   why = "说清楚缺什么"

@@ -38,7 +38,7 @@ func TestPMToolsEndToEnd(t *testing.T) {
 		Consent: workforce.Consent{Given: true}, Identities: []string{"feishu:ou_ww"}, Contact: []workforce.Route{{Kind: human.FeishuDM, Address: "ou_ww"}}}))
 	wm, _ := worker.NewManager(nil, nil, t.TempDir())
 	r := New(Env{Bot: "b", Workers: wm, Messenger: nop{}, App: pm})
-	owner := TurnContext{ConvKey: "c-owner", Caller: identity.User{ID: "u-owner", Role: identity.RoleOwner}}
+	principal := TurnContext{ConvKey: "c-principal", Caller: identity.User{ID: "u-principal", Role: identity.RolePrincipal}}
 	ww := TurnContext{ConvKey: "c-ww", Caller: identity.User{ID: "ou_ww", Role: identity.RoleVisitor, Name: "王五"}}
 	stranger := TurnContext{ConvKey: "c-x", Caller: identity.User{ID: "ou_x", Role: identity.RoleVisitor}}
 	call := func(tc TurnContext, name string, a map[string]any) string {
@@ -50,19 +50,19 @@ func TestPMToolsEndToEnd(t *testing.T) {
 		return out
 	}
 
-	out := call(owner, "project_setup", map[string]any{"title": "十月官网改版", "id": "P1", "priority": "P1", "until": "2026-10-31", "objective": "上线新首页"})
+	out := call(principal, "project_setup", map[string]any{"title": "十月官网改版", "id": "P1", "priority": "P1", "until": "2026-10-31", "objective": "上线新首页"})
 	if !strings.Contains(out, "P1") {
 		t.Fatal(out)
 	}
-	call(owner, "project_update", map[string]any{"project": "P1", "member_worker": "wangwu", "member_role": "数据负责人", "member_duties": []any{"埋点", "指标"}})
-	call(owner, "plan_item", map[string]any{"project": "P1", "title": "定埋点方案", "due": "2026-10-17 18:00", "estimate": "1d", "done": []any{"指标清单", "事件定义"}})
-	if out := call(owner, "find_people", map[string]any{"need": "埋点方案", "project": "P1"}); !strings.HasPrefix(out, "- wangwu") || !strings.Contains(out, "数据负责人") {
+	call(principal, "project_update", map[string]any{"project": "P1", "member_worker": "wangwu", "member_role": "数据负责人", "member_duties": []any{"埋点", "指标"}})
+	call(principal, "plan_item", map[string]any{"project": "P1", "title": "定埋点方案", "due": "2026-10-17 18:00", "estimate": "1d", "done": []any{"指标清单", "事件定义"}})
+	if out := call(principal, "find_people", map[string]any{"need": "埋点方案", "project": "P1"}); !strings.HasPrefix(out, "- wangwu") || !strings.Contains(out, "数据负责人") {
 		t.Fatalf("find_people: %s", out)
 	}
-	if _, err := r.Call(ctx, owner, "delegate", map[string]any{"item": "I1", "worker": "wangwu"}); Kind(err) != KindInvalid {
+	if _, err := r.Call(ctx, principal, "delegate", map[string]any{"item": "I1", "worker": "wangwu"}); Kind(err) != KindInvalid {
 		t.Fatalf("a person without a reason: %v", err)
 	}
-	out = call(owner, "delegate", map[string]any{"item": "I1", "worker": "wangwu", "why": "knowledge", "goal": "定埋点方案（指标、事件、字段）"})
+	out = call(principal, "delegate", map[string]any{"item": "I1", "worker": "wangwu", "why": "knowledge", "goal": "定埋点方案（指标、事件、字段）"})
 	if !strings.HasPrefix(out, "A1 → wangwu") || len(dms) != 1 || !strings.Contains(dms[0], "定埋点方案") {
 		t.Fatalf("delegate: %s %v", out, dms)
 	}
@@ -76,13 +76,13 @@ func TestPMToolsEndToEnd(t *testing.T) {
 	if len(wakes) == 0 || !strings.Contains(wakes[len(wakes)-1], "还价") {
 		t.Fatalf("counter reported: %v", wakes)
 	}
-	call(owner, "review", map[string]any{"assignment": "A1", "action": "accept_counter"})
+	call(principal, "review", map[string]any{"assignment": "A1", "action": "accept_counter"})
 	call(ww, "respond", map[string]any{"assignment": "A1", "action": "deliver", "result": "方案文档", "evidence": []any{"https://doc/x"}})
-	if out := call(owner, "brief", map[string]any{"project": "P1"}); !strings.Contains(out, "已交付待验收") || !strings.Contains(out, "waiting_on_us") {
+	if out := call(principal, "brief", map[string]any{"project": "P1"}); !strings.Contains(out, "已交付待验收") || !strings.Contains(out, "waiting_on_us") {
 		t.Fatalf("brief shows the delivery and the agenda: %s", out)
 	}
-	call(owner, "review", map[string]any{"assignment": "A1", "action": "verify"})
-	if out := call(owner, "brief", map[string]any{"project": "P1"}); !strings.Contains(out, "进度：100%") {
+	call(principal, "review", map[string]any{"assignment": "A1", "action": "verify"})
+	if out := call(principal, "brief", map[string]any{"project": "P1"}); !strings.Contains(out, "进度：100%") {
 		t.Fatalf("done: %s", out)
 	}
 	if v := pm.AssigneeView("wangwu"); v != "" {

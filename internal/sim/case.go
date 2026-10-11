@@ -34,10 +34,19 @@ type Case struct {
 	Items       []ItemSpec    `toml:"items"`
 	Assignments []AssignSpec  `toml:"assignments"`
 
+	Style StyleSpec `toml:"style"` // the principal's style
+
 	Steps  []Step  `toml:"steps"`
 	Expect []Check `toml:"expect"` // after all steps
 
 	file string
+}
+
+type StyleSpec struct {
+	Risk        string   `toml:"risk"`
+	AskBefore   []string `toml:"ask_before"`
+	BudgetMonth float64  `toml:"budget_month"`
+	Parallel    int      `toml:"parallel"`
 }
 
 type PersonSpec struct {
@@ -95,6 +104,7 @@ type ItemSpec struct {
 	DependsOn []string `toml:"depends_on"` // refs
 	Status    string   `toml:"status"`     // "done" to start completed
 	Started   string   `toml:"started"`    // with an assignment: when work began ("-3h")
+	Routine   string   `toml:"routine"`    // the kind of repeated work it belongs to
 }
 
 type AssignSpec struct {
@@ -111,7 +121,7 @@ type AssignSpec struct {
 // Step is one thing that happens.
 type Step struct {
 	Say     string `toml:"say"`
-	From    string `toml:"from"`  // "owner" (default) or a person id
+	From    string `toml:"from"`  // "principal" (default) or a person id
 	Group   string `toml:"group"` // say it in this group chat (a mention)
 	Advance string `toml:"advance"`
 	Deliver string `toml:"deliver"` // an agent delivers its open assignment: agent id
@@ -123,7 +133,7 @@ type Step struct {
 
 // Check is one assertion. Type decides which fields matter.
 //
-//	reply          messages to To ("owner", a person id, "group:<id>") since the step began
+//	reply          messages to To ("principal", a person id, "group:<id>") since the step began
 //	               must contain one of ContainsAny / none of NotContains (Min: at least that many messages)
 //	no_message     nothing sent to To ("" = to anyone)
 //	assignment     an assignment exists matching Worker / Kind / Status / Title / Due (Count: exactly that many)
@@ -132,6 +142,9 @@ type Step struct {
 //	tool           Called were all used, NotCalled none, during the step (or the case)
 //	unchanged      no item or assignment changed status during the step
 //	latency        the first message after the step began came within Max
+//	plan           a project has a plan matching Kind (goal|task) / Stage / Feasibility, with at least Min
+//	               nodes, and (if set) Parallel / AgentsFirst / Compounding hold
+//	no_plan        no project has a plan
 //	judge          the L1 judge answers Question about the messages to To: the probability must be ≥ AtLeast (default 0.7) or ≤ AtMost
 type Check struct {
 	Type        string   `toml:"type"`
@@ -151,7 +164,12 @@ type Check struct {
 	Question    string   `toml:"question"`
 	AtLeast     float64  `toml:"at_least"`
 	AtMost      float64  `toml:"at_most"`
-	Why         string   `toml:"why"` // what the check protects, shown when it fails
+	Stage       string   `toml:"stage"`        // plan: "draft|proposed"
+	Feasibility string   `toml:"feasibility"`  // plan: allowed verdicts, "unknown|conditional"
+	Parallel    bool     `toml:"parallel"`     // plan: the first batch has two or more nodes
+	AgentsFirst bool     `toml:"agents_first"` // plan: no research or drafting handed to a person without a reason
+	Compounding bool     `toml:"compounding"`  // plan: has a node that builds something for repeated work
+	Why         string   `toml:"why"`          // what the check protects, shown when it fails
 }
 
 // LoadDir reads every *.toml case in a directory, sorted by id.

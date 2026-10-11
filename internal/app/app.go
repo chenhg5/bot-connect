@@ -23,8 +23,10 @@ type App struct {
 	Attention attention.Service
 	Staffing  insight.Staffing
 	Policy    WakePolicy
-	Triage    Triage // optional L1 judgment on incoming signals
-	Say       Say    // optional: post into a conversation (acknowledgements)
+	Triage    Triage       // optional L1 judgment on incoming signals
+	Say       Say          // optional: post into a conversation (acknowledgements)
+	Reviewer  PlanReviewer // optional outside look at plans before they are proposed
+	Style     Style
 	Log       *slog.Logger
 }
 

@@ -1,0 +1,51 @@
+id = "G21"
+title = "规划：一年赚 100 万（谨慎）——先问约束，调研可行性，不轻易承诺"
+critical = true
+milestone = "planning"
+now = "2026-10-12 10:00"
+notes = "目标不是任务：先澄清约束，调研派 agent，可行性有依据再下结论；谨慎的委托人要先验证再投入。"
+
+[style]
+risk = "cautious"
+ask_before = ["花钱", "对外发布"]
+
+[[agents]]
+id = "researcher"
+description = "研究型 agent：调研市场、商业模式、竞品和数据，写分析报告"
+capabilities = ["web:read"]
+
+[[steps]]
+say = "在一年内帮助我赚到100万"
+timeout = "5m"
+  [[steps.expect]]
+  type = "judge"
+  to = "principal"
+  question = "这条回复是否在向委托人了解起点和约束（比如可投入的钱和时间、技能和已有资源、能承受的风险、不做什么），而不是直接承诺能做到或给出一个确定的赚钱方案？"
+  at_least = 0.7
+  why = "目标的路径是开放的，先澄清"
+  [[steps.expect]]
+  type = "no_assignment"
+  kind = "work"
+  worker = "principal"
+  why = "不把调研推给委托人"
+
+[[steps]]
+say = "我有 20 万存款可以投入，每周能拿出 10 小时，会写代码，有一个 3k star 的开源项目。不碰炒币，不借钱。"
+timeout = "5m"
+  [[steps.expect]]
+  type = "plan"
+  kind = "goal"
+  feasibility = "unknown|conditional"
+  parallel = true
+  agents_first = true
+  why = "可行性还没调研，不能直接说可行；几条路径并行调研"
+  [[steps.expect]]
+  type = "assignment"
+  worker = "researcher"
+  why = "调研交给 agent，马上开始"
+  [[steps.expect]]
+  type = "judge"
+  to = "principal"
+  question = "这条回复是否避免了承诺一定能赚到 100 万，并说明了要先调研或验证哪些事情、什么时候给出可行性结论？"
+  at_least = 0.7
+  why = "谨慎：先验证，不轻易承诺"

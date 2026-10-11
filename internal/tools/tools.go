@@ -1,5 +1,5 @@
 // Package tools defines what a brain can do: inspect and command workers,
-// talk to the conversation, reach the owner. The same registry is exposed over
+// talk to the conversation, reach the principal. The same registry is exposed over
 // MCP and over the `bot-connect tool` CLI, and privilege is enforced here —
 // not in any brain's prompt — so every brain implementation gets the same rules.
 package tools
@@ -38,21 +38,21 @@ func (tc TurnContext) allowed(t *Tool) bool {
 	if len(tc.Allow) > 0 && !tc.Allow[t.Name] {
 		return false
 	}
-	return !t.OwnerOnly || tc.Caller.Privileged()
+	return !t.PrincipalOnly || tc.Caller.Privileged()
 }
 
 // Messenger is the slice of the hub the tools need.
 type Messenger interface {
-	NotifyOwner(ctx context.Context, text string) error
+	NotifyPrincipal(ctx context.Context, text string) error
 	SendTo(ctx context.Context, convKey, text string) error
 }
 
 type Tool struct {
-	Name        string
-	Description string
-	Schema      map[string]any
-	OwnerOnly   bool
-	Handler     func(ctx context.Context, tc TurnContext, args map[string]any) (string, error)
+	Name          string
+	Description   string
+	Schema        map[string]any
+	PrincipalOnly bool
+	Handler       func(ctx context.Context, tc TurnContext, args map[string]any) (string, error)
 }
 
 type Registry struct {
@@ -115,8 +115,8 @@ func (r *Registry) Check(tc TurnContext, name string, args map[string]any) (*Too
 	if len(tc.Allow) > 0 && !tc.Allow[name] {
 		return nil, &ToolError{KindPermission, fmt.Sprintf("permission denied: tool %s is not enabled for this brain", name)}
 	}
-	if t.OwnerOnly && !tc.Caller.Privileged() {
-		return nil, &ToolError{KindPermission, fmt.Sprintf("permission denied: %s needs owner/admin, and this turn involves %s (%s)", name, tc.Caller.Display(), tc.Caller.Role)}
+	if t.PrincipalOnly && !tc.Caller.Privileged() {
+		return nil, &ToolError{KindPermission, fmt.Sprintf("permission denied: %s needs principal/admin, and this turn involves %s (%s)", name, tc.Caller.Display(), tc.Caller.Role)}
 	}
 	if req, ok := t.Schema["required"].([]string); ok {
 		for _, k := range req {
@@ -168,10 +168,10 @@ func (e Env) scope(tc TurnContext) worker.Scope {
 	return sc
 }
 
-// sessionOwner returns the worker (in scope) whose policy allows session
+// sessionPrincipal returns the worker (in scope) whose policy allows session
 // id, plus the session — or an error that reveals nothing about sessions
 // outside the allowlist.
-func (e Env) sessionOwner(tc TurnContext, id string) (string, session.Info, error) {
+func (e Env) sessionPrincipal(tc TurnContext, id string) (string, session.Info, error) {
 	if e.Sessions == nil || id == "" {
 		return "", session.Info{}, fmt.Errorf("no session %q", id)
 	}
@@ -258,7 +258,7 @@ func (e Env) target(tc TurnContext, a map[string]any) (string, error) {
 	if id == "" {
 		return e.Workers.DelegateTarget(name, e.scope(tc))
 	}
-	root, in, err := e.sessionOwner(tc, id)
+	root, in, err := e.sessionPrincipal(tc, id)
 	if err != nil {
 		return "", err
 	}
@@ -331,7 +331,7 @@ func New(env Env) *Registry {
 					return "(this worker has no session yet)", nil
 				}
 			}
-			_, in, err := env.sessionOwner(tc, id)
+			_, in, err := env.sessionPrincipal(tc, id)
 			if err != nil {
 				return "", err
 			}
@@ -353,14 +353,14 @@ func New(env Env) *Registry {
 	})
 	r.add(Tool{
 		Name: "agent_task",
-		Description: "Quick, untracked request to an agent session (a question, a small change, continuing a session; members use their private copies). For work that has an owner, a deadline, or needs following up, use delegate instead. Asynchronous — by worker name, optionally in one of the sessions it covers (session=<id>). " +
+		Description: "Quick, untracked request to an agent session (a question, a small change, continuing a session; members use their private copies). For work that has someone responsible, a deadline, or needs following up, use delegate instead. Asynchronous — by worker name, optionally in one of the sessions it covers (session=<id>). " +
 			"Members are routed to their own private copy of per-user workers; read-only workers only answer questions. " +
 			"Returns a task id and queue position immediately; the result comes back to this conversation as a task report. " +
 			"The worker cannot see this chat: the instruction must be self-contained (goal, context, constraints, definition of done). " +
 			"If the session is being used locally right now, the task waits until it is idle.",
 		Schema: obj(props{
 			"worker":      str("worker name"),
-			"template":    str("optional (owner/admin): no worker yet — create one from this template first (with worker as its name, purpose, dir/repo), then delegate"),
+			"template":    str("optional (principal/admin): no worker yet — create one from this template first (with worker as its name, purpose, dir/repo), then delegate"),
 			"purpose":     str("with template: what the new worker is for"),
 			"dir":         str("with template (workspace = existing): directory to work in"),
 			"repo":        str("with template (workspace = worktree): repository to branch from"),
@@ -372,10 +372,13 @@ func New(env Env) *Registry {
 			if s(a, "instruction") == "" {
 				return "", fmt.Errorf("instruction is empty")
 			}
+			if env.App != nil && focusNeedsPlan(env.App, tc) && !planExists(env.App) {
+				return "", &ToolError{KindInvalid, "this request needs a plan, not untracked tasks: use plan draft — its research nodes go to agents right away and are tracked"}
+			}
 			prefix := ""
 			if s(a, "template") != "" {
 				if !tc.Caller.Privileged() {
-					return "", &ToolError{KindPermission, "permission denied: only the owner or an admin can create workers"}
+					return "", &ToolError{KindPermission, "permission denied: only the principal or an admin can create workers"}
 				}
 				args := map[string]any{"template": s(a, "template"), "name": s(a, "worker"), "purpose": firstLine(s(a, "purpose"), s(a, "instruction")),
 					"dir": s(a, "dir"), "repo": s(a, "repo")}
@@ -441,10 +444,10 @@ func New(env Env) *Registry {
 	})
 	r.add(Tool{
 		Name: "worker_create",
-		Description: "Create a new worker from a template (owner/admin only) — for new, independent work no existing worker fits. " +
+		Description: "Create a new worker from a template (principal/admin only) — for new, independent work no existing worker fits. " +
 			"The template fixes what it may do (agent, access level, where its directory comes from); you choose a name, its purpose and, if the template asks, a directory (existing) or repository (worktree). " +
 			"Templates and their capacity are listed by list_workers. Retire it with worker_retire when its work is done.",
-		OwnerOnly: true,
+		PrincipalOnly: true,
 		Schema: obj(props{
 			"template": str("template name"),
 			"name":     str("short name, letters/digits/-/_ (default <template>-<n>)"),
@@ -461,10 +464,10 @@ func New(env Env) *Registry {
 		},
 	})
 	r.add(Tool{
-		Name:        "worker_update",
-		Description: "Change the purpose of a worker you created from a template (its permissions come from the template and can't change).",
-		OwnerOnly:   true,
-		Schema:      obj(props{"name": str("worker name"), "purpose": str("new purpose")}, "name", "purpose"),
+		Name:          "worker_update",
+		Description:   "Change the purpose of a worker you created from a template (its permissions come from the template and can't change).",
+		PrincipalOnly: true,
+		Schema:        obj(props{"name": str("worker name"), "purpose": str("new purpose")}, "name", "purpose"),
 		Handler: func(ctx context.Context, tc TurnContext, a map[string]any) (string, error) {
 			if err := workers.UpdatePurpose(s(a, "name"), s(a, "purpose"), env.scope(tc)); err != nil {
 				return "", &ToolError{KindNotFound, err.Error()}
@@ -476,8 +479,8 @@ func New(env Env) *Registry {
 		Name: "worker_retire",
 		Description: "Retire a worker created from a template once its work is done (configured workers can't be retired). " +
 			"A busy worker, or a worktree with uncommitted changes, needs force=true. Its directory is kept (a clean worktree is removed; its branch stays). Idle workers are also retired automatically after the template's idle_ttl.",
-		OwnerOnly: true,
-		Schema:    obj(props{"name": str("worker name"), "force": boolean("cancel its tasks / keep uncommitted changes as they are; default false")}, "name"),
+		PrincipalOnly: true,
+		Schema:        obj(props{"name": str("worker name"), "force": boolean("cancel its tasks / keep uncommitted changes as they are; default false")}, "name"),
 		Handler: func(ctx context.Context, tc TurnContext, a map[string]any) (string, error) {
 			force, _ := a["force"].(bool)
 			return workers.Retire(s(a, "name"), force, env.scope(tc))
@@ -500,9 +503,9 @@ func New(env Env) *Registry {
 		}
 		r.add(Tool{
 			Name: "schedule_create",
-			Description: "Create a scheduled job (owner/admin only). At each run its instruction is posted into THIS conversation and you carry it out then (answer or delegate). " +
+			Description: "Create a scheduled job (principal/admin only). At each run its instruction is posted into THIS conversation and you carry it out then (answer or delegate). " +
 				"spec: cron \"m h dom mon dow\" (e.g. \"0 9 * * 1-5\" = 9:00 on weekdays), \"@every 2h\", \"@daily\", \"@weekly\", optional \"TZ=Asia/Shanghai \" prefix, or one-shot \"@once 2h\" / \"@once 15:00\" / \"@once 2026-10-12T09:00\". Minimum interval 5 minutes.",
-			OwnerOnly: true,
+			PrincipalOnly: true,
 			Schema: obj(props{
 				"spec":        str("when to run (see description)"),
 				"prompt":      str("the instruction to carry out at each run, self-contained"),
@@ -518,9 +521,9 @@ func New(env Env) *Registry {
 			},
 		})
 		r.add(Tool{
-			Name:        "schedule_list",
-			Description: "List this bot's scheduled jobs: id, state, spec, next run, runs, last status.",
-			OwnerOnly:   true,
+			Name:          "schedule_list",
+			Description:   "List this bot's scheduled jobs: id, state, spec, next run, runs, last status.",
+			PrincipalOnly: true,
 			Handler: func(ctx context.Context, tc TurnContext, a map[string]any) (string, error) {
 				jobs := env.Schedules.List(env.Bot, "")
 				if len(jobs) == 0 {
@@ -534,10 +537,10 @@ func New(env Env) *Registry {
 			},
 		})
 		r.add(Tool{
-			Name:        "schedule_delete",
-			Description: "Delete a scheduled job by id.",
-			OwnerOnly:   true,
-			Schema:      obj(props{"id": str("schedule id, e.g. s1a2b3c")}, "id"),
+			Name:          "schedule_delete",
+			Description:   "Delete a scheduled job by id.",
+			PrincipalOnly: true,
+			Schema:        obj(props{"id": str("schedule id, e.g. s1a2b3c")}, "id"),
 			Handler: func(ctx context.Context, tc TurnContext, a map[string]any) (string, error) {
 				j, ok := env.Schedules.Get(s(a, "id"))
 				if !ok || j.Bot != env.Bot {
@@ -562,26 +565,30 @@ func New(env Env) *Registry {
 		},
 	})
 	r.add(Tool{
-		Name:        "notify_owner",
-		Description: "Forward a visitor's request or message to the owner's private chat.",
-		Schema:      obj(props{"message": str("what to tell the owner: who, and what they want")}, "message"),
+		Name:        "notify_principal",
+		Description: "Forward a visitor's request or message to the principal's private chat.",
+		Schema:      obj(props{"message": str("what to tell the principal: who, and what they want")}, "message"),
 		Handler: func(ctx context.Context, tc TurnContext, a map[string]any) (string, error) {
-			if env.App != nil { // to the owner side as a signal; the main session decides what to do
+			if env.App != nil && principalSpoke(env.App, tc) {
+				return "", &ToolError{KindInvalid, "you are talking with the principal in this turn: just reply to them directly"}
+			}
+			if env.App != nil { // to the principal side as a signal; the main session decides what to do
 				by := actorOf(env.App, tc)
 				if _, err := env.App.Relay(ctx, by, tc.Caller.Display(), tc.ConvKey, "", s(a, "message")); err != nil {
 					return "", err
 				}
-				return "passed on to the owner side", nil
+				return "passed on to the principal side", nil
 			}
 			text := fmt.Sprintf("📨 来自「%s」（%s · %s）的留言：\n%s", tc.Caller.Display(), tc.Platform, tc.Caller.ID, s(a, "message"))
-			if err := env.Messenger.NotifyOwner(ctx, text); err != nil {
+			if err := env.Messenger.NotifyPrincipal(ctx, text); err != nil {
 				return "", err
 			}
-			return "forwarded to owner", nil
+			return "forwarded to principal", nil
 		},
 	})
 	if env.App != nil {
 		addPM(r, env)
+		addPlan(r, env)
 	}
 	sort.Strings(r.names)
 	return r

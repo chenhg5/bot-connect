@@ -86,19 +86,28 @@ item = "track"
 worker = "wangwu"
 why = "knowledge"
 
-[[steps]]                         # 步骤：say（from 默认 owner）/ advance（虚拟时间）/ deliver（agent 交付）
+[[steps]]                         # 步骤：say（from 默认 principal）/ advance（虚拟时间）/ deliver（agent 交付）
 from = "wangwu"
 say = "这周排不过来，下周一可以吗"
   [[steps.expect]]                # 检查：reply / no_message / assignment / no_assignment / item / tool / unchanged / latency
   type = "assignment"
   worker = "wangwu"
   status = "countered"
-  why = "还价要等主人决定"
+  why = "还价要等委托人决定"
 ```
 
 **原则**：线上每出现一次“做错 / 做慢 / 该说没说 / 不该说却说了”，就照着它写一个用例，修好后它就一直守着。
 
 ---
+
+### 规划类 case（G20–G24）
+
+检查类型 `plan`：某个项目的计划满足 `kind`（goal / task）、`stage`、`feasibility`（可写 `unknown|conditional`），
+至少 `min` 个节点，并且（如果设置了）`parallel`（第一批有两个以上节点并行）、`agents_first`（没有把调研 / 起草交给人）、
+`compounding`（有复利节点）。`no_plan`：没有任何计划。case 顶层的 `[style]` 设委托人的风格（risk、ask_before、budget_month、parallel）。
+
+这些 case 依赖 Jev（判断请求是否需要规划、回复质量），没有 key 时会失败。大脑是非确定性的，单次失败先看转录再下结论，
+必要时重跑：规划类 case 在多次运行中有波动，G22 目前最不稳定（大脑倾向于反复追问）。
 
 ## 3. 飞书手工测试
 

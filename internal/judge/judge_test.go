@@ -58,9 +58,9 @@ func TestTriageMapsAnswers(t *testing.T) {
 func TestGuard(t *testing.T) {
 	a := newApp(t)
 	ctx := context.Background()
-	owner := Actor{UserID: "u", Role: RoleOwner}
-	a.UpsertWorker(ctx, owner, workforce.Worker{ID: "ww", Name: "王五", Kind: workforce.Human, Trust: workforce.External, Identities: []string{"feishu:ou_ww"}})
-	a.CreateProject(ctx, owner, app.ProjectSpec{ID: "P9", Title: "收购星河科技"})
+	principal := Actor{UserID: "u", Role: RolePrincipal}
+	a.UpsertWorker(ctx, principal, workforce.Worker{ID: "ww", Name: "王五", Kind: workforce.Human, Trust: workforce.External, Identities: []string{"feishu:ou_ww"}})
+	a.CreateProject(ctx, principal, app.ProjectSpec{ID: "P9", Title: "收购星河科技"})
 	g := &Guard{App: a} // no judge: exact titles only
 	if v := g.Check(ctx, "ou_ww", "", "chicken 在忙收购星河科技的事"); !v.Block {
 		t.Fatal("a private project's title must be caught by code")
@@ -77,9 +77,9 @@ func TestGuard(t *testing.T) {
 func TestMatcher(t *testing.T) {
 	a := newApp(t)
 	ctx := context.Background()
-	owner := Actor{UserID: "u", Role: RoleOwner}
-	a.UpsertWorker(ctx, owner, workforce.Worker{ID: "zl", Name: "赵六", Kind: workforce.Human, Trust: workforce.External, Description: "数据分析"})
-	a.UpsertWorker(ctx, owner, workforce.Worker{ID: "ls", Name: "李四", Kind: workforce.Human, Trust: workforce.External, Description: "设计"})
+	principal := Actor{UserID: "u", Role: RolePrincipal}
+	a.UpsertWorker(ctx, principal, workforce.Worker{ID: "zl", Name: "赵六", Kind: workforce.Human, Trust: workforce.External, Description: "数据分析"})
+	a.UpsertWorker(ctx, principal, workforce.Worker{ID: "ls", Name: "李四", Kind: workforce.Human, Trust: workforce.External, Description: "设计"})
 	m := Matcher{J: scripted{"w_zl": {Score: 2.8}, "w_ls": {Score: 0.4}}}
 	cs := m.Match(insight.Need{Text: "定埋点方案"}, a.World(ctx))
 	if len(cs) != 1 || cs[0].Worker != "zl" || !strings.Contains(cs[0].Reasons[0], "语义") {
@@ -90,11 +90,11 @@ func TestMatcher(t *testing.T) {
 func TestTriageLandsAnAcceptance(t *testing.T) {
 	a := newApp(t)
 	ctx := context.Background()
-	owner := Actor{UserID: "u", Worker: Owner, Role: RoleOwner}
-	a.UpsertWorker(ctx, owner, workforce.Worker{ID: "ww", Name: "王五", Kind: workforce.Human, Trust: workforce.External, Consent: workforce.Consent{Given: true}})
+	principal := Actor{UserID: "u", Worker: Principal, Role: RolePrincipal}
+	a.UpsertWorker(ctx, principal, workforce.Worker{ID: "ww", Name: "王五", Kind: workforce.Human, Trust: workforce.External, Consent: workforce.Consent{Given: true}})
 	a.RegisterDriver(string(workforce.Human), nopDriver{})
-	it, _ := a.PlanItem(ctx, owner, planningSpec("P", "埋点方案"))
-	as, err := a.Delegate(ctx, owner, app.DelegateSpec{Item: it.ID, Worker: "ww", Why: NeedKnowledge})
+	it, _ := a.PlanItem(ctx, principal, planningSpec("P", "埋点方案"))
+	as, err := a.Delegate(ctx, principal, app.DelegateSpec{Item: it.ID, Worker: "ww", Why: NeedKnowledge})
 	if err != nil {
 		t.Fatal(err)
 	}

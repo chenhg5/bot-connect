@@ -42,8 +42,8 @@ func (f fakeStore) History(id string, limit int) ([]session.Entry, error) {
 
 type nop struct{}
 
-func (nop) NotifyOwner(context.Context, string) error    { return nil }
-func (nop) SendTo(context.Context, string, string) error { return nil }
+func (nop) NotifyPrincipal(context.Context, string) error { return nil }
+func (nop) SendTo(context.Context, string, string) error  { return nil }
 
 func setup(t *testing.T, dirSessions bool, botWorkers map[string]bool) (*Registry, TurnContext) {
 	dir, other := t.TempDir(), t.TempDir()
@@ -59,7 +59,7 @@ func setup(t *testing.T, dirSessions bool, botWorkers map[string]bool) (*Registr
 	}
 	wm.Sessions = cat
 	r := New(Env{Bot: "b", Workers: wm, Sessions: cat, Messenger: nop{}, Scope: worker.Scope{Names: botWorkers}})
-	return r, TurnContext{ConvKey: "c", Caller: identity.User{ID: "me", Role: identity.RoleOwner}}
+	return r, TurnContext{ConvKey: "c", Caller: identity.User{ID: "me", Role: identity.RolePrincipal}}
 }
 
 func call(t *testing.T, r *Registry, tc TurnContext, name string, a map[string]any) (string, error) {

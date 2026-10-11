@@ -1,5 +1,5 @@
 id = "G9"
-title = "不回消息的人：工作时间内按上限提醒，过期后告诉主人"
+title = "不回消息的人：工作时间内按上限提醒，过期后告诉委托人"
 critical = false
 now = "2026-10-12 10:00"
 
@@ -55,6 +55,6 @@ advance = "40h"
   status = "expired"
   [[steps.expect]]
   type = "reply"
-  to = "owner"
+  to = "principal"
   contains_any = ["过期", "没有回应", "没回", "未回复", "没回复"]
-  why = "过期后告诉主人"
+  why = "过期后告诉委托人"

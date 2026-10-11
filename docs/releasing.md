@@ -12,7 +12,7 @@ page is the source of truth.
    (without the `v`: `v0.1.0` → `0.1.0`).
 3. **Gate.** `make check` (gofmt, vet, all tests) must pass, and CI must be green on `main`.
 4. **Real-IM smoke test** (not automated): run the bot against a test Feishu app and check
-   `/whoami` (role owner), one question, one delegated read-only task with its report, one group @.
+   `/whoami` (role principal), one question, one delegated read-only task with its report, one group @.
 5. **Commit and tag** the release commit:
    ```bash
    git commit -am "release: <version>"

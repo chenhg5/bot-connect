@@ -58,8 +58,8 @@ func setupPM(cfg *config.Config, bc config.BotConfig, h *hub.Hub, workers *worke
 		human.FeishuDM: human.ReacherFunc(func(ctx context.Context, addr, text string, _ workforce.Urgency) (string, error) {
 			return h.SendUser(ctx, "feishu", addr, text)
 		}),
-		human.OwnerChat: human.ReacherFunc(func(ctx context.Context, _, text string, _ workforce.Urgency) (string, error) {
-			return "", h.NotifyOwner(ctx, text)
+		human.PrincipalChat: human.ReacherFunc(func(ctx context.Context, _, text string, _ workforce.Urgency) (string, error) {
+			return "", h.NotifyPrincipal(ctx, text)
 		}),
 	}})
 	assemble.WirePM(a, h, bc, cfg.Judge)
@@ -69,13 +69,13 @@ func setupPM(cfg *config.Config, bc config.BotConfig, h *hub.Hub, workers *worke
 		return nil, nil, err
 	}
 	setup := System("config")
-	owners := append([]string(nil), bc.Owners...)
+	principals := append([]string(nil), bc.Principals...)
 	if withConsole {
-		owners = append(owners, console.OwnerID)
+		principals = append(principals, console.PrincipalID)
 	}
-	if err := a.UpsertWorker(ctx, setup, workforce.Worker{ID: Owner, Name: firstNonEmpty(bc.OwnerName, "owner"), Kind: workforce.Human,
-		Trust: workforce.External, Physical: true, Consent: workforce.Consent{Given: true}, Identities: owners,
-		Contact: []workforce.Route{{Kind: human.OwnerChat, Address: "owner"}}}); err != nil {
+	if err := a.UpsertWorker(ctx, setup, workforce.Worker{ID: Principal, Name: firstNonEmpty(bc.PrincipalName, "principal"), Kind: workforce.Human,
+		Trust: workforce.External, Physical: true, Consent: workforce.Consent{Given: true}, Identities: principals,
+		Contact: []workforce.Route{{Kind: human.PrincipalChat, Address: "principal"}}}); err != nil {
 		return nil, nil, err
 	}
 	for _, w := range cfg.Workers {

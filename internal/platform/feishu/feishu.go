@@ -236,9 +236,9 @@ func (p *Platform) LookupUser(ctx context.Context, id string) (identity.User, er
 	return identity.User{Platform: "feishu", ID: id, Name: u.Name, UnionID: u.UnionID, Email: u.Email}, nil
 }
 
-// DefaultOwners implements identity.OwnerSource: the Feishu app's owner
+// DefaultPrincipals implements identity.PrincipalSource: the Feishu app's owner
 // (or creator), so the person who set the app up owns the bot by default.
-func (p *Platform) DefaultOwners(ctx context.Context) []string {
+func (p *Platform) DefaultPrincipals(ctx context.Context) []string {
 	resp, err := p.client.Get(ctx, "/open-apis/application/v6/applications/"+p.cfg.AppID+"?lang=zh_cn&user_id_type=open_id",
 		nil, larkcore.AccessTokenTypeTenant)
 	if err != nil {

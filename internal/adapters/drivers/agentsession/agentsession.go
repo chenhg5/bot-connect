@@ -30,7 +30,7 @@ var _ app.WorkerDriver = (*Driver)(nil)
 func actor() Actor { return System("driver:agent_session") }
 
 func requester(a delegation.Assignment) identity.User {
-	return identity.User{ID: firstNonEmpty(a.Requester.UserID, "bot-connect"), Role: identity.RoleOwner, Name: "bot-connect"}
+	return identity.User{ID: firstNonEmpty(a.Requester.UserID, "bot-connect"), Role: identity.RolePrincipal, Name: "bot-connect"}
 }
 
 func (d *Driver) Observe(ctx context.Context, w workforce.Worker, open []delegation.Assignment) []workforce.Fact {

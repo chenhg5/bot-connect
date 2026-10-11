@@ -42,12 +42,14 @@ type Item struct {
 	DependsOn  []ItemID      `json:"depends_on,omitempty"`
 	Needs      []Need        `json:"needs,omitempty"`
 	Status     Status        `json:"status"`
-	Owner      WorkerID      `json:"owner,omitempty"`      // who has it now (from the current assignment)
+	Assignee   WorkerID      `json:"assignee,omitempty"`   // who has it now (from the current assignment)
 	Assignment AssignmentID  `json:"assignment,omitempty"` // current open assignment
 	Blocker    *Blocker      `json:"blocker,omitempty"`
 	StartedAt  time.Time     `json:"started_at,omitempty"`
 	LastSignal time.Time     `json:"last_signal,omitempty"` // last sign of progress
 	Requester  Actor         `json:"requester"`
+	Node       Node          `json:"node,omitempty"` // its place in the project's plan
+	Ask        bool          `json:"ask,omitempty"`  // created for an approval / decision / confirmation under its parent
 	CreatedAt  time.Time     `json:"created_at"`
 	UpdatedAt  time.Time     `json:"updated_at"`
 	Version    int           `json:"version"`
@@ -82,6 +84,8 @@ type Spec struct {
 	Priority   *Priority
 	DependsOn  []ItemID
 	Needs      []Need
+	Node       Node
+	Ask        bool
 }
 
 func (i *Item) ev(typ string, at time.Time, by Actor, kv ...any) Event {
@@ -100,7 +104,7 @@ func New(id ItemID, s Spec, now time.Time, by Actor) (Item, []Event, error) {
 		return Item{}, nil, Invalid("estimate can't be negative")
 	}
 	it := Item{ID: id, Project: s.Project, Parent: s.Parent, Kind: s.Kind, Title: s.Title, Due: s.Due, Estimate: s.Estimate,
-		Priority: s.Priority, DependsOn: s.DependsOn, Needs: s.Needs, Status: Todo, Requester: by, CreatedAt: now, UpdatedAt: now}
+		Priority: s.Priority, DependsOn: s.DependsOn, Needs: s.Needs, Node: s.Node, Ask: s.Ask, Status: Todo, Requester: by, CreatedAt: now, UpdatedAt: now}
 	for _, a := range s.Acceptance {
 		if a = strings.TrimSpace(a); a != "" {
 			it.Acceptance = append(it.Acceptance, Criterion{Text: a})
@@ -134,16 +138,16 @@ func (i *Item) Attach(a AssignmentID, w WorkerID, now time.Time, by Actor) ([]Ev
 		return nil, Conflict("item %s is %s", i.ID, i.Status)
 	}
 	if i.Assignment != "" {
-		return nil, Conflict("item %s is already with %s (%s)", i.ID, i.Owner, i.Assignment)
+		return nil, Conflict("item %s is already with %s (%s)", i.ID, i.Assignee, i.Assignment)
 	}
-	i.Assignment, i.Owner = a, w
+	i.Assignment, i.Assignee = a, w
 	i.touch(now)
 	return []Event{i.ev("item.attached", now, by, "assignment", string(a), "worker", string(w))}, nil
 }
 
 // Detach: the assignment ended without completing the item; it goes back to todo.
 func (i *Item) Detach(reason string, now time.Time, by Actor) []Event {
-	i.Assignment, i.Owner, i.Blocker = "", "", nil
+	i.Assignment, i.Assignee, i.Blocker = "", "", nil
 	if i.Open() {
 		i.Status = Todo
 	}
@@ -171,13 +175,13 @@ func (i *Item) Block(reason string, now time.Time, by Actor) []Event {
 }
 
 // Complete closes the item. Only a verified assignment or a privileged
-// actor (the owner deciding it's done) may complete it.
+// actor (the principal deciding it's done) may complete it.
 func (i *Item) Complete(verified bool, now time.Time, by Actor) ([]Event, error) {
 	if !i.Open() {
 		return nil, Conflict("item %s is already %s", i.ID, i.Status)
 	}
 	if !verified && !by.Privileged() {
-		return nil, Forbidden("item %s can only be completed by a verified delivery or the owner", i.ID)
+		return nil, Forbidden("item %s can only be completed by a verified delivery or the principal", i.ID)
 	}
 	i.Status, i.Blocker = Done, nil
 	i.touch(now)

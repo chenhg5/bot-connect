@@ -25,7 +25,7 @@ work_dir = '`+dir+`'`+`
 
 [[bots]]
 name = "alice"
-owners = ["ou_1"]
+principals = ["ou_1"]
 workers = ["a"]
 [bots.brain]
 system_prompt = "be brief"

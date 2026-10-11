@@ -224,7 +224,7 @@ func (a *Assignment) apply(name string, s Step, by Actor) ([]Event, error) {
 		return nil, Forbidden("only %s can %s assignment %s", a.Worker, name, a.ID)
 	}
 	if !r.worker && !a.isRequester(by) {
-		return nil, Forbidden("only the requester or the owner can %s assignment %s", name, a.ID)
+		return nil, Forbidden("only the requester or the principal can %s assignment %s", name, a.ID)
 	}
 	if !slices.Contains(r.from, a.Status) {
 		return nil, Conflict("can't %s assignment %s while it is %s", name, a.ID, a.Status)

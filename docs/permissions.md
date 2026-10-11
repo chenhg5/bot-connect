@@ -7,12 +7,12 @@ Claude Code's permission modes or Codex's sandbox settings; agent-native knobs r
 
 | Role | Who | Can |
 |---|---|---|
-| owner | `owners` (default: the IM app's owner) | everything |
-| admin | `admins` | like owner; reads members' private workers but doesn't drive them |
+| principal | `principals` (default: the IM app's owner) | everything |
+| admin | `admins` | like principal; reads members' private workers but doesn't drive them |
 | member | `members` (`"*"` = everyone) | private copies of `per_user` workers; ask `readonly` workers (if `ask_roles` has member) |
-| visitor | everyone else | chat, leave messages for the owner; ask `readonly` workers only if `ask_roles` has visitor |
+| visitor | everyone else | chat, leave messages for the principal; ask `readonly` workers only if `ask_roles` has visitor |
 
-Members never see the owner's workers, sessions or tasks, and members never see each other's.
+Members never see the principal's workers, sessions or tasks, and members never see each other's.
 
 ## Worker access levels (what a worker may do)
 
@@ -31,7 +31,7 @@ At run time every non-`full` worker is also denied bot-connect's own state (audi
 isolated agent homes) and every other member's private workspace.
 
 Knobs on top: `read_dirs`, `write_dirs`, `deny_read` (default: agents' session stores, `~/.ssh`, `~/.aws`, …),
-`isolate` (don't load the owner's `~/.claude` setup — default on for `per_user` and `readonly` workers).
+`isolate` (don't load the principal's `~/.claude` setup — default on for `per_user` and `readonly` workers).
 Escape hatch (wins over `access`): `permission_mode`, `tools`, `confine`, `sandbox`.
 
 ## Brain
@@ -48,7 +48,7 @@ Escape hatch (wins over `access`): `permission_mode`, `tools`, `confine`, `sandb
 
 ## Scheduled jobs
 
-Schedules are a persistence channel (an instruction that fires later, unattended), so: only owners/admins
+Schedules are a persistence channel (an instruction that fires later, unattended), so: only principals/admins
 can create, list or delete them (`schedule_*` tools are hidden from members and visitors); the creator's
 role is re-checked at every run and a job whose creator lost it is disabled; jobs run in the conversation
 that created them, with the creator's rights; fires, skips and disables are audit events (`type: schedule`);
@@ -61,8 +61,8 @@ those in its `templates` list). Everything that bounds a worker — agent, `acce
 `deny_read`, `isolate`, provider — comes from the template; the brain chooses only a name, a purpose, and
 for `workspace = "existing"` / `"worktree"` a directory or repository, which must resolve (symlinks
 followed) under the template's `roots` (or be its `repo`). Worktree workers may also write the repository's
-git dir, so they can commit. Only owner/admin turns can create, update or retire them; they are visible to
-the creating bot's owner/admins only, never to members or visitors. `max_instances` caps each template;
+git dir, so they can commit. Only principal/admin turns can create, update or retire them; they are visible to
+the creating bot's principal/admins only, never to members or visitors. `max_instances` caps each template;
 idle workers are retired after `idle_ttl`. Retiring never deletes work: a worktree with uncommitted changes
 is kept (and is only retired with `force`), a clean one is removed but its branch stays, and `dir`
 workspaces stay on disk. Creating and retiring are audit events (`status: worker_created / worker_retired`).

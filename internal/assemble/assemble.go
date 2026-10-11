@@ -22,9 +22,10 @@ import (
 // (one audience per turn), messages come in as signals, the bot's wake
 // policy applies, and main-session turns report back.
 func WirePM(a *app.App, h *hub.Hub, bc config.BotConfig, jc config.Judge) {
+	a.Style = app.Style{Risk: bc.Style.Risk, AskBefore: bc.Style.AskBefore, BudgetMonth: bc.Style.BudgetMonth, Parallel: bc.Style.Parallel}
 	wireJudge(a, h, bc, jc)
 	a.Waker = app.WakerFunc(func(ctx context.Context, w app.Wake) {
-		// One audience per wake-up: the owner side together (and the
+		// One audience per wake-up: the principal side together (and the
 		// scaffold's own signals), each other person on their own, so a turn
 		// runs with the rights of whoever it is for.
 		type group struct {
@@ -34,8 +35,8 @@ func WirePM(a *app.App, h *hub.Hub, bc config.BotConfig, jc config.Judge) {
 		var groups []*group
 		byKey := map[string]*group{}
 		for _, x := range w.Signals {
-			from, key := hub.MainUser, "owner"
-			if r := identity.Role(x.Actor.Role); x.Actor.UserID != "" && r != identity.RoleOwner && r != identity.RoleAdmin && x.Source != inbox.Relay {
+			from, key := hub.MainUser, "principal"
+			if r := identity.Role(x.Actor.Role); x.Actor.UserID != "" && r != identity.RolePrincipal && r != identity.RoleAdmin && x.Source != inbox.Relay {
 				from = identity.User{ID: x.Actor.UserID, Name: x.ActorName, Role: r}
 				key = x.Actor.UserID
 			}
@@ -66,14 +67,14 @@ func WirePM(a *app.App, h *hub.Hub, bc config.BotConfig, jc config.Judge) {
 		a.Policy.BatchEvery = bc.Wake.BatchEvery.Duration
 	}
 	// One continuous session: everyone's messages become signals for the
-	// main session (unless visitors are isolated, then only the owner side's).
+	// main session (unless visitors are isolated, then only the principal side's).
 	h.SetIntake(func(in hub.Inbound, u identity.User, conv string) bool {
 		if bc.IsolateVisitors && !u.Privileged() {
 			return false
 		}
 		by := Actor{UserID: u.ID, Role: Role(u.Role), Via: "chat"}
-		if u.Role == identity.RoleOwner {
-			by.Worker = Owner
+		if u.Role == identity.RolePrincipal {
+			by.Worker = Principal
 		} else if id, ok := a.WorkerFor(u.ID, u.UnionID, u.Email); ok {
 			by.Worker = id
 		}
@@ -128,6 +129,9 @@ func wireJudge(a *app.App, h *hub.Hub, bc config.BotConfig, jc config.Judge) {
 	if live && config.On(jc.Triage) {
 		a.Triage = &judge.Triage{J: j, App: a}
 	}
+	if live && config.On(jc.PlanReview) {
+		a.Reviewer = &judge.PlanReview{J: j}
+	}
 	if live && config.On(jc.Staffing) {
 		a.Staffing.Matchers = append(a.Staffing.Matchers, judge.Matcher{J: j})
 	}
@@ -139,9 +143,9 @@ func wireJudge(a *app.App, h *hub.Hub, bc config.BotConfig, jc config.Judge) {
 		guardJudge = j
 	}
 	g := &judge.Guard{J: guardJudge, App: a, Threshold: jc.LeakThreshold}
-	owner := firstNonEmpty(bc.OwnerName, "主人")
+	principal := firstNonEmpty(bc.PrincipalName, "委托人")
 	h.SetEgress(func(ctx context.Context, c *hub.Conversation, text string) (string, bool) {
-		if c.Key == h.MainKey() || h.IsOwnerConv(c) {
+		if c.Key == h.MainKey() || h.IsPrincipalConv(c) {
 			return text, true
 		}
 		gctx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -154,6 +158,6 @@ func wireJudge(a *app.App, h *hub.Hub, bc config.BotConfig, jc config.Judge) {
 		_, _, _ = a.Ingest(ctx, app.SignalSpec{Dedupe: fmt.Sprintf("guard:%s:%d", c.Key, time.Now().UnixNano()), Source: inbox.Internal,
 			Reason: "guard_blocked", Actor: System("guard"), Summary: "拦下了一条发给同事的消息：" + v.Reason,
 			Body: fmt.Sprintf("发往 %s 的消息被拦下（%s）。原文：\n%s\n对方问的是：%s\n需要的话，改写后用 reply / contact 重新发。", c.Key, v.Reason, text, c.LastAsked)})
-		return fmt.Sprintf("这个我需要先跟 %s 确认一下，确认后再回复你。", owner), true
+		return fmt.Sprintf("这个我需要先跟 %s 确认一下，确认后再回复你。", principal), true
 	})
 }

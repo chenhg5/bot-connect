@@ -1,6 +1,6 @@
 # Brain 的决策能力：怎么来，怎么评
 
-> 用词：bot（brain）是 owner，负责推动一切；给它目标的人叫**委托人**（principal）。
+> 用词：bot（brain）是 principal，负责推动一切；给它目标的人叫**委托人**（principal）。
 
 > 结论先行：不训练模型。决策能力由三样东西组合出来：
 > **(1) 规划协议**（skill + prompt，告诉它“好的 PM 怎么想”），
@@ -12,7 +12,7 @@
 
 ### 例 A：「帮我给我的开源项目搭建一套完整的可行的周期发版策略」
 
-bot 是这件事的 owner：它负责把事推到底，委托人只在需要他的地方出现。
+bot 是这件事的 principal：它负责把事推到底，委托人只在需要他的地方出现。
 它不自己读代码、写策略，第一反应是“拆成哪几块、每块让谁做”，而且这张图只是**草案**：
 
 | 节点 | 做什么 | 谁 | 依赖 |
@@ -55,7 +55,7 @@ bot 是这件事的 owner：它负责把事推到底，委托人只在需要他�
 风险偏好是**委托人的**，不是 bot 的。它应该是配置 + 可在对话里修改的 profile：
 
 ```toml
-[owner.style]
+[principal.style]
 risk = "cautious"          # cautious | balanced | bold
 ask_before = ["spend>500", "public", "external_contact", "irreversible"]
 budget_month = 2000        # 能花的钱（API、外包、服务）
@@ -108,7 +108,7 @@ explore_ratio = 0.2        # 多少精力给“复利投资”（工具、训练
 **(b) Rubric 评分（Jev score，对转录打分）**：每个规划 case 问 4–6 个窄问题，例如：
 - “brain 是否先澄清了约束再开始执行？”
 - “是否明确说出了不可行或有条件可行的部分？”
-- “推荐是否符合委托人的风险偏好 `owner.style.risk`？”
+- “推荐是否符合委托人的风险偏好 `principal.style.risk`？”
 - “有没有让人去做 agent 能做的事？”
 
 **(c) 结果指标（上线后）**：计划被委托人原样接受的比例、计划变更次数、预测 vs 实际完成时间、
@@ -149,3 +149,20 @@ draft ──(拆完、代码校验通过)──▶ proposed ──(相关的人�
 随机抽样适合**评估**（离线统计决策质量，形成指标），不适合线上：线上检查应该放在代价大、
 不可逆的决策点上。Jev 分数不直接否决 brain，只是把具体疑点交回给它；是否采纳由 brain 决定并留痕，
 这样也能统计“Jev 提醒了多少次、brain 改了多少次、改了之后结果更好吗”。
+
+## 7. 已实现（代码位置）
+
+| 概念 | 代码 |
+|---|---|
+| 委托人（principal）与 bot 的 owner 意识 | `shared.Principal`、`RolePrincipal`；人设与协议在 `internal/brain/prompt.go` |
+| 计划节点：执行者、为什么是人、产出、复利、周期性 | `planning.Node`（`internal/domain/planning/plan.go`） |
+| 结构检查、并行批次、关键路径 | `planning.Analyze`：找人没理由、决定交给 agent、执行者不存在 → 拒绝；调研给了人、全串行、周期性工作没有复利节点 → 提醒 |
+| 计划阶段：草案 → 待确认 → 执行中 → 完成，修订要重新确认 | `portfolio.Plan`（`internal/domain/portfolio/plan.go`） |
+| 起草、提议、委托人同意、自动推进 | `app.DraftPlan / ProposePlan / AgreePlan / advancePlans`（`internal/app/plan.go`）：探索性节点（调研、起草）起草时就交给 agent；其余节点在全员确认后、依赖完成时自动派发，并带上前置节点的结果；并发受 `style.parallel` 限制 |
+| 人确认自己的部分 | propose 时给每个有节点的人发一个 review 类请求（approve / change） |
+| 草案阶段不报风险 | `attention.committed`：未确认计划里还没派出的节点不进风险检测 |
+| 重复工作提醒 | `attention.Routine`：同一类工作完成 ≥3 次且没有复利节点 → 信号 |
+| 委托人风格 | `[bot.style]`（risk / ask_before / budget_month / parallel），`app.Style.Describe()` 进简报 |
+| Jev 审视计划 | `judge.PlanReview`：5 个窄问题（agent 优先、并行、可行性有依据、符合风险偏好、先对齐再投入），低分作为疑点回给 brain，不拦截 |
+| 工具 | `plan`（draft / propose / agree / status），agree 只能在委托人说了话的回合里调用 |
+| 评测 | `plan` / `no_plan` 检查；G20–G24 |

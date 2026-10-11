@@ -36,6 +36,7 @@ type Project struct {
 	Card      Card           `json:"card"`
 	Home      string         `json:"home,omitempty"` // conversation for project messages
 	Policies  []ApprovalRule `json:"policies,omitempty"`
+	Plan      Plan           `json:"plan"`
 	CreatedAt time.Time      `json:"created_at"`
 	Version   int            `json:"version"`
 }

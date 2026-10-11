@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/chenhg5/bot-connect/internal/domain/insight"
+	"github.com/chenhg5/bot-connect/internal/domain/planning"
 	. "github.com/chenhg5/bot-connect/internal/domain/shared"
 	"github.com/chenhg5/bot-connect/internal/domain/world"
 )
@@ -53,6 +54,7 @@ type Context struct {
 }
 
 func NewContext(w *world.World) *Context {
+	w = committed(w)
 	pace := insight.PaceFrom(w)
 	return &Context{World: w, Pace: pace, Forecast: insight.Forecast(w, pace)}
 }
@@ -84,11 +86,11 @@ type Tiering interface {
 type Outcome string
 
 const (
-	Done          Outcome = "done"            // resolved; comes back only if it gets worse
-	Acted         Outcome = "acted"           // did something, waiting on others; comes back at Until
-	Deferred      Outcome = "deferred"        // later; comes back at Until
-	HandedToOwner Outcome = "handed_to_owner" // the owner decides; comes back at Until
-	Dismissed     Outcome = "dismissed"       // not an issue; comes back only if it gets worse
+	Done              Outcome = "done"                // resolved; comes back only if it gets worse
+	Acted             Outcome = "acted"               // did something, waiting on others; comes back at Until
+	Deferred          Outcome = "deferred"            // later; comes back at Until
+	HandedToPrincipal Outcome = "handed_to_principal" // the principal decides; comes back at Until
+	Dismissed         Outcome = "dismissed"           // not an issue; comes back only if it gets worse
 )
 
 // DefaultRecheck is when an acted / deferred / handed signal comes back
@@ -110,7 +112,7 @@ type Resolution struct {
 func Resolve(s Signal, o Outcome, until *time.Time, note string, now time.Time, by Actor) (Resolution, []Event, error) {
 	switch o {
 	case Done, Dismissed:
-	case Acted, Deferred, HandedToOwner:
+	case Acted, Deferred, HandedToPrincipal:
 		if until == nil {
 			t := now.Add(DefaultRecheck)
 			until = &t
@@ -257,4 +259,25 @@ func (t DefaultTiering) Tier(scored []Scored) Agenda {
 		}
 	}
 	return ag
+}
+
+// committed hides the nodes of plans not yet agreed, unless already handed
+// out: their dates are proposals, not promises, so missing them is no risk.
+func committed(w *world.World) *world.World {
+	hide := false
+	for _, p := range w.Projects {
+		hide = hide || !p.Plan.Stage.Committed()
+	}
+	if !hide {
+		return w
+	}
+	c := *w
+	c.Items = make(map[ItemID]planning.Item, len(w.Items))
+	for id, it := range w.Items {
+		if p, ok := w.Projects[it.Project]; ok && !p.Plan.Stage.Committed() && it.Assignment == "" {
+			continue
+		}
+		c.Items[id] = it
+	}
+	return &c
 }

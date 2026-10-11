@@ -8,7 +8,7 @@
 //   - A short debounce lets rapid-fire messages land in the same turn.
 //   - At most MaxConcurrent turns run at once across all conversations.
 //   - When slots are scarce, lanes are served by priority
-//     (owner message < task event < visitor message), then by waiting time.
+//     (principal message < task event < visitor message), then by waiting time.
 package hub
 
 import (
@@ -59,7 +59,7 @@ const (
 	KindTaskEvent = "task_event"
 	KindSchedule  = "schedule"
 	KindPM        = "pm"     // project management: assignment updates, risks, follow-ups
-	KindSignal    = "signal" // a wake-up of the owner-side main session
+	KindSignal    = "signal" // a wake-up of the principal-side main session
 )
 
 type Item struct {
@@ -124,7 +124,7 @@ type Options struct {
 	PerUser       bool
 	Scope         worker.Scope // the bot's view of the worker pool (for /status)
 	Identity      *identity.Resolver
-	Policy        *identity.StaticPolicy // for defaulting owners from the platform; may be nil
+	Policy        *identity.StaticPolicy // for defaulting principals from the platform; may be nil
 	Audit         audit.Sink
 	MaxConcurrent int
 	Debounce      time.Duration
@@ -159,14 +159,14 @@ type Hub struct {
 	workers   *worker.Manager
 	platforms map[string]Platform
 
-	mu        sync.Mutex
-	lanes     map[string]*lane
-	convs     map[string]*Conversation
-	ownerChat map[string]string // platform → owner's latest p2p chat id
-	seen      map[string]time.Time
-	slots     chan struct{}
-	kick      chan struct{}
-	ctx       context.Context
+	mu            sync.Mutex
+	lanes         map[string]*lane
+	convs         map[string]*Conversation
+	principalChat map[string]string // platform → principal's latest p2p chat id
+	seen          map[string]time.Time
+	slots         chan struct{}
+	kick          chan struct{}
+	ctx           context.Context
 }
 
 func New(opts Options, workers *worker.Manager) *Hub {
@@ -174,7 +174,7 @@ func New(opts Options, workers *worker.Manager) *Hub {
 		opts.Audit = audit.Nop{}
 	}
 	h := &Hub{opts: opts, workers: workers, platforms: map[string]Platform{},
-		lanes: map[string]*lane{}, convs: map[string]*Conversation{}, ownerChat: map[string]string{},
+		lanes: map[string]*lane{}, convs: map[string]*Conversation{}, principalChat: map[string]string{},
 		seen: map[string]time.Time{}, slots: make(chan struct{}, opts.MaxConcurrent), kick: make(chan struct{}, 1)}
 	h.load()
 	return h
@@ -189,11 +189,11 @@ func (h *Hub) Start(ctx context.Context) error {
 		if d, ok := p.(identity.Directory); ok {
 			h.opts.Identity.AddDirectory(p.Name(), d)
 		}
-		if pol := h.opts.Policy; pol != nil && !pol.HasOwners() {
-			if src, ok := p.(identity.OwnerSource); ok {
-				for _, id := range src.DefaultOwners(ctx) {
-					pol.AddOwner(id)
-					slog.Info("owner defaults to the app owner", "platform", p.Name(), "id", id)
+		if pol := h.opts.Policy; pol != nil && !pol.HasPrincipals() {
+			if src, ok := p.(identity.PrincipalSource); ok {
+				for _, id := range src.DefaultPrincipals(ctx) {
+					pol.AddPrincipal(id)
+					slog.Info("principal defaults to the app principal", "platform", p.Name(), "id", id)
 				}
 			}
 		}
@@ -242,8 +242,8 @@ func (h *Hub) onInbound(in Inbound) {
 
 	h.mu.Lock()
 	conv := h.convLocked(key, in.Platform, in.ChatID, in.IsGroup)
-	if user.Role == identity.RoleOwner && !in.IsGroup {
-		h.ownerChat[in.Platform] = in.ChatID
+	if user.Role == identity.RolePrincipal && !in.IsGroup {
+		h.principalChat[in.Platform] = in.ChatID
 	}
 	if !in.IsGroup {
 		conv.Peer = user.ID
@@ -413,11 +413,11 @@ func (h *Hub) egress(ctx context.Context, c *Conversation, text string) (string,
 	return h.opts.Egress(ctx, &cp, text)
 }
 
-// IsOwnerConv reports whether a conversation is the owner's private chat.
-func (h *Hub) IsOwnerConv(c *Conversation) bool {
+// IsPrincipalConv reports whether a conversation is the principal's private chat.
+func (h *Hub) IsPrincipalConv(c *Conversation) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	return c != nil && !c.IsGroup && h.ownerChat[c.Platform] == c.ChatID
+	return c != nil && !c.IsGroup && h.principalChat[c.Platform] == c.ChatID
 }
 
 // SetIntake routes messages into the main session (intake turns them into
@@ -438,19 +438,19 @@ func (h *Hub) Idle() bool {
 	return true
 }
 
-// SetOwnerChat records the owner's private chat on a platform (so replies
-// and notices have somewhere to go before the owner has written).
-func (h *Hub) SetOwnerChat(platform, chatID string) {
+// SetPrincipalChat records the principal's private chat on a platform (so replies
+// and notices have somewhere to go before the principal has written).
+func (h *Hub) SetPrincipalChat(platform, chatID string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.ownerChat[platform] = chatID
+	h.principalChat[platform] = chatID
 	h.convLocked(h.convKey(platform, chatID), platform, chatID, false)
 }
 
 // MainKey is the main session: the bot's one continuous working context.
 // Everyone's messages and the scaffold's signals arrive there; each turn
 // runs with the rights of whoever it is for (never mixing a colleague's
-// signal with the owner's in one turn), and replies go back where each
+// signal with the principal's in one turn), and replies go back where each
 // signal came from.
 func (h *Hub) MainKey() string { return h.opts.KeyPrefix + "main" }
 
@@ -461,7 +461,7 @@ func (h *Hub) mainConv() *Conversation {
 }
 
 // WakeMain hands a wake-up to the main session; from is whose rights the
-// turn runs with (the scaffold's own signals run as the owner).
+// turn runs with (the scaffold's own signals run as the principal).
 func (h *Hub) WakeMain(text string, signalIDs []string, replyConv string, from identity.User) {
 	if from.ID == "" {
 		from = MainUser
@@ -471,9 +471,9 @@ func (h *Hub) WakeMain(text string, signalIDs []string, replyConv string, from i
 }
 
 // MainUser is who the scaffold's own wake-ups run as.
-var MainUser = identity.User{ID: "bot-connect", Name: "bot-connect", Role: identity.RoleOwner}
+var MainUser = identity.User{ID: "bot-connect", Name: "bot-connect", Role: identity.RolePrincipal}
 
-// sameAudience: items that may share a main-session turn — the owner side
+// sameAudience: items that may share a main-session turn — the principal side
 // together, each other person alone.
 func sameAudience(a, b Item) bool {
 	if a.From.Privileged() && b.From.Privileged() {
@@ -483,7 +483,7 @@ func sameAudience(a, b Item) bool {
 }
 
 // replyTarget resolves where a turn's plain reply goes: for the main
-// session, the conversation the focus came from (else the owner's chat).
+// session, the conversation the focus came from (else the principal's chat).
 func (h *Hub) replyTarget(conv *Conversation, items []Item) *Conversation {
 	if conv.Key != h.MainKey() {
 		return conv
@@ -495,7 +495,7 @@ func (h *Hub) replyTarget(conv *Conversation, items []Item) *Conversation {
 			return c
 		}
 	}
-	for pname, chat := range h.ownerChat {
+	for pname, chat := range h.principalChat {
 		if c := h.convs[h.convKey(pname, chat)]; c != nil {
 			return c
 		}
@@ -503,27 +503,27 @@ func (h *Hub) replyTarget(conv *Conversation, items []Item) *Conversation {
 	return nil
 }
 
-// OwnerConv is the conversation key of the owner's private chat ("" until
-// the owner has talked to the bot).
-func (h *Hub) OwnerConv() string {
+// PrincipalConv is the conversation key of the principal's private chat ("" until
+// the principal has talked to the bot).
+func (h *Hub) PrincipalConv() string {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	for pname, chat := range h.ownerChat {
+	for pname, chat := range h.principalChat {
 		return h.convKey(pname, chat)
 	}
 	return ""
 }
 
-// NotifyOwner sends a message straight to the owner's private chat.
-func (h *Hub) NotifyOwner(ctx context.Context, text string) error {
+// NotifyPrincipal sends a message straight to the principal's private chat.
+func (h *Hub) NotifyPrincipal(ctx context.Context, text string) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	for pname, chat := range h.ownerChat {
+	for pname, chat := range h.principalChat {
 		if p := h.platforms[pname]; p != nil {
 			return p.Send(ctx, chat, text)
 		}
 	}
-	return fmt.Errorf("owner has not talked to the bot yet; no private chat to notify")
+	return fmt.Errorf("principal has not talked to the bot yet; no private chat to notify")
 }
 
 func (h *Hub) enqueue(key string, it Item) {
@@ -754,8 +754,8 @@ func (h *Hub) AppendHistory(c *Conversation, user, assistant string) {
 }
 
 type savedState struct {
-	Convs     map[string]*Conversation `json:"conversations"`
-	OwnerChat map[string]string        `json:"owner_chat"`
+	Convs         map[string]*Conversation `json:"conversations"`
+	PrincipalChat map[string]string        `json:"principal_chat"`
 }
 
 func (h *Hub) statePath() string { return filepath.Join(h.opts.DataDir, "conversations.json") }
@@ -770,15 +770,15 @@ func (h *Hub) load() {
 		if s.Convs != nil {
 			h.convs = s.Convs
 		}
-		if s.OwnerChat != nil {
-			h.ownerChat = s.OwnerChat
+		if s.PrincipalChat != nil {
+			h.principalChat = s.PrincipalChat
 		}
 	}
 }
 
 func (h *Hub) save() {
 	h.mu.Lock()
-	b, err := json.MarshalIndent(savedState{Convs: h.convs, OwnerChat: h.ownerChat}, "", "  ")
+	b, err := json.MarshalIndent(savedState{Convs: h.convs, PrincipalChat: h.principalChat}, "", "  ")
 	h.mu.Unlock()
 	if err != nil {
 		return
@@ -811,7 +811,7 @@ func (h *Hub) dedup(id string) bool {
 
 func (h *Hub) command(conv *Conversation, in Inbound, user identity.User, text string) bool {
 	fields := strings.Fields(text)
-	owner := user.Privileged()
+	principal := user.Privileged()
 	reply := ""
 	switch fields[0] {
 	case "/whoami":
@@ -822,7 +822,7 @@ func (h *Hub) command(conv *Conversation, in Inbound, user identity.User, text s
 	case "/help":
 		reply = "直接跟我说话就行。命令：/whoami 查看身份，/status 查看 worker 状态，/cancel <任务ID> 取消任务，/reset 清空本会话记忆（大脑会开新会话）。"
 	case "/status":
-		if !owner {
+		if !principal {
 			reply = h.workers.Overview(h.scopeFor(user))
 		} else {
 			reply = h.workers.Overview(h.scopeFor(user))
@@ -834,8 +834,8 @@ func (h *Hub) command(conv *Conversation, in Inbound, user identity.User, text s
 			}
 		}
 	case "/cancel":
-		if !owner {
-			reply = "只有 owner 可以取消任务。"
+		if !principal {
+			reply = "只有 principal 可以取消任务。"
 		} else if len(fields) < 2 {
 			reply = "用法：/cancel <任务ID>"
 		} else if t, err := h.workers.Cancel(fields[1]); err != nil {

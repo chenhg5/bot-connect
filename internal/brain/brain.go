@@ -28,17 +28,17 @@ import (
 )
 
 type Brain struct {
-	cfg       config.Brain
-	adapter   Adapter
-	hub       *hub.Hub
-	workers   *worker.Manager
-	server    *toolserver.Server
-	allow     map[string]bool
-	toolNames []string
-	scope     worker.Scope
-	botName   string
-	ownerName string
-	pm        *app.App
+	cfg           config.Brain
+	adapter       Adapter
+	hub           *hub.Hub
+	workers       *worker.Manager
+	server        *toolserver.Server
+	allow         map[string]bool
+	toolNames     []string
+	scope         worker.Scope
+	botName       string
+	principalName string
+	pm            *app.App
 }
 
 // now is the brain's clock: the PM core's (virtual in simulations), else real time.
@@ -53,7 +53,7 @@ func (b *Brain) now() time.Time {
 // every privileged turn, a worker's own assignments into theirs.
 func (b *Brain) SetPM(a *app.App) { b.pm = a }
 
-func New(cfg config.Brain, h *hub.Hub, w *worker.Manager, srv *toolserver.Server, toolNames []string, scope worker.Scope, botName, ownerName string) (*Brain, error) {
+func New(cfg config.Brain, h *hub.Hub, w *worker.Manager, srv *toolserver.Server, toolNames []string, scope worker.Scope, botName, principalName string) (*Brain, error) {
 	if err := os.MkdirAll(cfg.WorkDir, 0o700); err != nil {
 		return nil, err
 	}
@@ -79,7 +79,7 @@ func New(cfg config.Brain, h *hub.Hub, w *worker.Manager, srv *toolserver.Server
 	if len(allow) > 0 {
 		names = cfg.Tools
 	}
-	return &Brain{cfg: cfg, adapter: ad, hub: h, workers: w, server: srv, allow: allow, toolNames: names, scope: scope, botName: botName, ownerName: ownerName}, nil
+	return &Brain{cfg: cfg, adapter: ad, hub: h, workers: w, server: srv, allow: allow, toolNames: names, scope: scope, botName: botName, principalName: principalName}, nil
 }
 
 // sessionKind identifies the settings a brain session was created under.

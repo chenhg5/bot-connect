@@ -16,7 +16,7 @@ func TestDueFollowsThePersonsWords(t *testing.T) {
 	mon := time.Date(2026, 10, 12, 10, 0, 0, 0, time.Local)
 	pm := app.New(jsonstore.Memory(), NewFakeClock(mon))
 	sig, _, err := pm.Ingest(context.Background(), app.SignalSpec{Dedupe: "m1", Source: inbox.DirectMessage, Reason: "dm",
-		Actor: Actor{UserID: "u", Role: RoleOwner}, Body: "下周三前把埋点方案定下来"})
+		Actor: Actor{UserID: "u", Role: RolePrincipal}, Body: "下周三前把埋点方案定下来"})
 	if err != nil {
 		t.Fatal(err)
 	}

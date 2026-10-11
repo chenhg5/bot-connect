@@ -14,7 +14,7 @@ import (
 // DefaultDetectors is the first rule set.
 func DefaultDetectors() []Detector {
 	return []Detector{Overdue{}, WillMiss{}, ThinSlack{}, Unassigned{}, Silent{}, Stuck{}, LateDependency{},
-		WaitingOnUs{}, OfferUnanswered{}, Overload{}, OwnerUnavailable{}}
+		WaitingOnUs{}, OfferUnanswered{}, Overload{}, AssigneeUnavailable{}, Routine{}}
 }
 
 func fmtT(t time.Time) string { return t.Format("01-02 15:04") }
@@ -22,8 +22,8 @@ func fmtT(t time.Time) string { return t.Format("01-02 15:04") }
 func itemSignal(kind string, lv Level, it planning.Item, summary string, suggest []string, kv ...any) Signal {
 	s := Signal{Key: kind + ":" + string(it.ID), Kind: kind, Level: lv, Subject: "item:" + string(it.ID), Project: it.Project,
 		Summary: summary, Suggest: suggest, Facts: map[string]any{}}
-	if it.Owner != "" {
-		s.People = []WorkerID{it.Owner}
+	if it.Assignee != "" {
+		s.People = []WorkerID{it.Assignee}
 	}
 	if it.Due != nil {
 		s.Facts["due"] = *it.Due
@@ -67,7 +67,7 @@ func (WillMiss) Detect(c *Context) []Signal {
 		}
 		out = append(out, itemSignal("will_miss", High, it,
 			fmt.Sprintf("「%s」预计 %s 完成，晚于截止 %s", it.Title, fmtT(f), fmtT(*it.Due)),
-			[]string{"confirm_eta", "cut_scope", "add_help", "tell_requester"}, "forecast", f, "pace", c.Pace.Factor(it.Owner)))
+			[]string{"confirm_eta", "cut_scope", "add_help", "tell_requester"}, "forecast", f, "pace", c.Pace.Factor(it.Assignee)))
 	}
 	return out
 }
@@ -236,7 +236,7 @@ func (OfferUnanswered) Detect(c *Context) []Signal {
 		out = append(out, Signal{Key: "offer_unanswered:" + string(a.ID), Kind: "offer_unanswered", Level: Medium,
 			Subject: "assignment:" + string(a.ID), Project: a.Project,
 			Summary: fmt.Sprintf("%s 一天没回复是否接下 %s（已提醒 %d 次）", a.Worker, a.ID, len(a.Nudges())),
-			Suggest: []string{"reach_differently", "reassign", "ask_owner"}, People: []WorkerID{a.Worker}, Since: a.CreatedAt})
+			Suggest: []string{"reach_differently", "reassign", "ask_principal"}, People: []WorkerID{a.Worker}, Since: a.CreatedAt})
 	}
 	return out
 }
@@ -270,24 +270,58 @@ func (o Overload) Detect(c *Context) []Signal {
 	return out
 }
 
-// OwnerUnavailable: whoever has an item with a near deadline can't be reached.
-type OwnerUnavailable struct{}
+// AssigneeUnavailable: whoever has an item with a near deadline can't be reached.
+type AssigneeUnavailable struct{}
 
-func (OwnerUnavailable) Name() string { return "owner_unavailable" }
-func (OwnerUnavailable) Detect(c *Context) []Signal {
+func (AssigneeUnavailable) Name() string { return "assignee_unavailable" }
+func (AssigneeUnavailable) Detect(c *Context) []Signal {
 	var out []Signal
 	for _, it := range c.Items {
-		if !it.Open() || it.Owner == "" || it.Due == nil || it.Due.Sub(c.Now) > 72*time.Hour {
+		if !it.Open() || it.Assignee == "" || it.Due == nil || it.Due.Sub(c.Now) > 72*time.Hour {
 			continue
 		}
-		if ok, why := c.State(it.Owner).Available(c.Now); !ok {
+		if ok, why := c.State(it.Assignee).Available(c.Now); !ok {
 			lv := Medium
 			if it.Due.Sub(c.Now) < 24*time.Hour {
 				lv = High
 			}
-			out = append(out, itemSignal("owner_unavailable", lv, it, fmt.Sprintf("「%s」的执行者 %s 不可用（%s）", it.Title, it.Owner, why),
+			out = append(out, itemSignal("assignee_unavailable", lv, it, fmt.Sprintf("「%s」的执行者 %s 不可用（%s）", it.Title, it.Assignee, why),
 				[]string{"reassign", "move_due"}))
 		}
+	}
+	return out
+}
+
+// Routine: the same kind of work keeps coming back and nothing has been
+// built to make it cheaper — a tool, a skill, a dedicated worker.
+type Routine struct{ Min int }
+
+func (Routine) Name() string { return "routine" }
+func (r Routine) Detect(c *Context) []Signal {
+	limit := r.Min
+	if limit <= 0 {
+		limit = 3
+	}
+	done, invested := map[string]int{}, map[string]bool{}
+	for _, it := range c.Items {
+		rt := it.Node.Routine
+		if rt == "" || it.Status == planning.Dropped {
+			continue
+		}
+		if it.Node.Compounding {
+			invested[rt] = true
+		} else if it.Status == planning.Done {
+			done[rt]++
+		}
+	}
+	var out []Signal
+	for rt, n := range done {
+		if n < limit || invested[rt] {
+			continue
+		}
+		out = append(out, Signal{Key: "routine:" + rt, Kind: "routine", Level: Medium, Subject: "routine:" + rt,
+			Summary: fmt.Sprintf("「%s」已经做了 %d 次，还没有沉淀成工具或专门的 worker", rt, n),
+			Suggest: []string{"build_tool", "train_worker"}, Facts: map[string]any{"routine": rt, "times": n}})
 	}
 	return out
 }

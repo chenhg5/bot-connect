@@ -1,0 +1,51 @@
+id = "G20"
+title = "规划：开源发版策略——调研并行交给 agent，先对齐再落地"
+critical = true
+milestone = "planning"
+now = "2026-10-12 10:00"
+notes = "bot 不自己写策略；调研和起草交给 agent 并行；落地细节等对齐之后再定；找维护者只为他需要做的那一步。"
+
+[[agents]]
+id = "researcher"
+description = "研究型 agent：读代码和仓库历史、调研外部资料、写分析报告"
+capabilities = ["web:read", "repo:bot-connect:read"]
+
+[[agents]]
+id = "dev"
+description = "开发 agent：可以改 bot-connect 仓库、写脚本和 CI 配置"
+capabilities = ["repo:bot-connect:write"]
+
+[[people]]
+id = "zhangsan"
+name = "张三"
+description = "bot-connect 的核心维护者，负责合并和发版"
+consent = true
+
+[[steps]]
+say = "帮我给我的开源项目 bot-connect 搭建一套完整可行的周期发版策略。张三是核心维护者。"
+timeout = "5m"
+  [[steps.expect]]
+  type = "tool"
+  called = ["plan"]
+  why = "大于一次委托的事要有计划"
+  [[steps.expect]]
+  type = "plan"
+  min = 3
+  parallel = true
+  agents_first = true
+  why = "调研并行交给 agent，人只做需要人的一步"
+  [[steps.expect]]
+  type = "assignment"
+  worker = "researcher"
+  why = "调研马上开始"
+  [[steps.expect]]
+  type = "no_assignment"
+  worker = "zhangsan"
+  kind = "work"
+  why = "不让维护者去做调研或起草"
+  [[steps.expect]]
+  type = "judge"
+  to = "principal"
+  question = "这条回复是否在说明打算怎么推进（拆成哪几步、谁来做、什么时候需要委托人或维护者确认），而不是直接写出一整套发版策略的内容？"
+  at_least = 0.6
+  why = "bot 是推动者，不是自己写策略的人"

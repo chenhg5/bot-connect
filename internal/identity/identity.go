@@ -2,7 +2,7 @@
 //
 //   - A platform reports the raw sender (its own user id, plus whatever the
 //     event carries) and may implement Directory to look users up.
-//   - Policy decides the sender's Role for this bot (owner / admin / visitor).
+//   - Policy decides the sender's Role for this bot (principal / admin / visitor).
 //   - Resolver combines both, with a cache, and is what the framework uses.
 //
 // Nothing downstream ever sees an anonymous sender: every message, turn, tool
@@ -19,14 +19,14 @@ import (
 type Role string
 
 const (
-	RoleOwner   Role = "owner"   // the person this bot belongs to
-	RoleAdmin   Role = "admin"   // trusted: may command workers like the owner
-	RoleMember  Role = "member"  // may use their own isolated workspaces and ask read-only workers
-	RoleVisitor Role = "visitor" // anyone else: talk, ask, leave a message
+	RolePrincipal Role = "principal" // the person this bot belongs to
+	RoleAdmin     Role = "admin"     // trusted: may command workers like the principal
+	RoleMember    Role = "member"    // may use their own isolated workspaces and ask read-only workers
+	RoleVisitor   Role = "visitor"   // anyone else: talk, ask, leave a message
 )
 
 // Privileged reports whether the role may command workers.
-func (r Role) Privileged() bool { return r == RoleOwner || r == RoleAdmin }
+func (r Role) Privileged() bool { return r == RolePrincipal || r == RoleAdmin }
 
 type User struct {
 	Platform string `json:"platform,omitempty"`
@@ -54,17 +54,17 @@ func (u User) Display() string {
 }
 
 // System is the requester of framework-originated work.
-var System = User{ID: "system", Name: "system", Role: RoleOwner}
+var System = User{ID: "system", Name: "system", Role: RolePrincipal}
 
 // Directory is an optional platform capability: describe a user by id.
 type Directory interface {
 	LookupUser(ctx context.Context, id string) (User, error)
 }
 
-// OwnerSource is an optional platform capability: who owns this bot by
+// PrincipalSource is an optional platform capability: who owns this bot by
 // default (e.g. the owner of the Feishu app), used when none is configured.
-type OwnerSource interface {
-	DefaultOwners(ctx context.Context) []string
+type PrincipalSource interface {
+	DefaultPrincipals(ctx context.Context) []string
 }
 
 // Policy assigns roles. The default is StaticPolicy (config lists); a company
@@ -74,18 +74,18 @@ type Policy interface {
 }
 
 // StaticPolicy matches users by platform id, union id or email. "*" in
-// members makes everyone (who isn't owner/admin) a member.
+// members makes everyone (who isn't principal/admin) a member.
 type StaticPolicy struct {
-	mu      sync.RWMutex
-	owners  map[string]bool
-	admins  map[string]bool
-	members map[string]bool
+	mu         sync.RWMutex
+	principals map[string]bool
+	admins     map[string]bool
+	members    map[string]bool
 }
 
-func NewStaticPolicy(owners, admins []string, members ...string) *StaticPolicy {
-	p := &StaticPolicy{owners: map[string]bool{}, admins: map[string]bool{}, members: map[string]bool{}}
-	for _, o := range owners {
-		p.owners[o] = true
+func NewStaticPolicy(principals, admins []string, members ...string) *StaticPolicy {
+	p := &StaticPolicy{principals: map[string]bool{}, admins: map[string]bool{}, members: map[string]bool{}}
+	for _, o := range principals {
+		p.principals[o] = true
 	}
 	for _, a := range admins {
 		p.admins[a] = true
@@ -96,24 +96,24 @@ func NewStaticPolicy(owners, admins []string, members ...string) *StaticPolicy {
 	return p
 }
 
-func (p *StaticPolicy) AddOwner(id string) {
+func (p *StaticPolicy) AddPrincipal(id string) {
 	p.mu.Lock()
-	p.owners[id] = true
+	p.principals[id] = true
 	p.mu.Unlock()
 }
 
-func (p *StaticPolicy) HasOwners() bool {
+func (p *StaticPolicy) HasPrincipals() bool {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	return len(p.owners) > 0
+	return len(p.principals) > 0
 }
 
 func (p *StaticPolicy) Role(u User) Role {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	for _, k := range []string{u.ID, u.UnionID, u.Email} {
-		if k != "" && p.owners[k] {
-			return RoleOwner
+		if k != "" && p.principals[k] {
+			return RolePrincipal
 		}
 	}
 	for _, k := range []string{u.ID, u.UnionID, u.Email} {

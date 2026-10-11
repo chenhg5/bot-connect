@@ -1,5 +1,5 @@
 id = "G5"
-title = "人的回复归位：登记到对的委托，并告诉主人"
+title = "人的回复归位：登记到对的委托，并告诉委托人"
 critical = true
 now = "2026-10-12 10:00"
 
@@ -35,6 +35,6 @@ say = "收到，接了，周三给你"
   why = "登记为接下"
   [[steps.expect]]
   type = "reply"
-  to = "owner"
+  to = "principal"
   contains_any = ["王五", "接"]
-  why = "主人知道他接了"
+  why = "委托人知道他接了"

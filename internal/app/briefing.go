@@ -65,8 +65,12 @@ func (a *App) Briefing(ctx context.Context, o BriefingOptions) string {
 	})
 	for _, id := range ids {
 		b.WriteString("\n" + ProjectCard(w, w.Projects[id], insight.ProjectProgress(w, id, c.Forecast, attention.RiskCount(sigs, id)), o.Focus == id, o.MaxItems))
+		if o.Focus == id && w.Projects[id].Plan.Stage != portfolio.NoPlan {
+			b.WriteString(a.DescribePlan(id) + "\n")
+		}
 	}
 	b.WriteString("\n" + Roster(w))
+	b.WriteString("委托人的风格：" + a.Style.Describe() + "\n")
 	if org, ok := w.Projects[OrgProject]; ok {
 		if roles := org.ActiveMembers(w.Now); len(roles) > 0 {
 			b.WriteString("\n公司层面的角色：")
@@ -107,7 +111,7 @@ func Roster(w *world.World) string {
 		return ids[i] < ids[j]
 	})
 	var b strings.Builder
-	b.WriteString("人力（worker id「名字」：职责 / 能力；状态）：\n")
+	b.WriteString("人力（worker id「名字」：职责 / 能力；状态）。agent 按需启动，不需要在线会话，直接交给它；人要有理由：\n")
 	for _, id := range ids {
 		wk := w.Workers[id]
 		kind := "agent"
@@ -136,7 +140,7 @@ func Roster(w *world.World) string {
 			}
 			parts = append(parts, "可批准 "+strings.Join(as, "、"))
 		}
-		if wk.Kind == workforce.Human && id != Owner && !wk.Consent.Given {
+		if wk.Kind == workforce.Human && id != Principal && !wk.Consent.Given {
 			parts = append(parts, "未同意接 bot 派的活（只能联系，不能派活）")
 		}
 		if len(parts) > 0 {
@@ -546,6 +550,7 @@ func (a *App) Overview(ctx context.Context) string {
 			}
 			b.WriteString("；成员：" + strings.Join(parts, "，"))
 		}
+		b.WriteString(a.planLine(p))
 		items := w.ItemsOf(id, false)
 		sort.Slice(items, func(i, j int) bool {
 			if (items[i].Due == nil) != (items[j].Due == nil) {
@@ -580,8 +585,25 @@ func (a *App) Overview(ctx context.Context) string {
 		people = append(people, n)
 	}
 	sort.Strings(people)
-	b.WriteString("人力：" + strings.Join(people, "、") + "（详情用 brief / find_people）\n")
+	b.WriteString("人力：" + strings.Join(people, "、") + "（agent 按需启动，直接交给它即可；详情用 brief / find_people）\n")
+	b.WriteString("委托人的风格：" + a.Style.Describe() + "\n")
 	return b.String()
+}
+
+// planLine is a project's plan in a few words (empty without one).
+func (a *App) planLine(p portfolio.Project) string {
+	if p.Plan.Stage == portfolio.NoPlan {
+		return ""
+	}
+	stage := map[portfolio.Stage]string{portfolio.PlanDraft: "草案", portfolio.PlanProposed: "待确认", portfolio.PlanActive: "执行中", portfolio.PlanDone: "已完成"}[p.Plan.Stage]
+	line := fmt.Sprintf("；计划 rev%d %s", p.Plan.Revision, stage)
+	if p.Plan.Kind == portfolio.KindGoal {
+		line += "，可行性 " + string(p.Plan.Feasibility.Verdict)
+	}
+	if wait := a.PlanWaitingOn(p.ID); len(wait) > 0 {
+		line += "，等待确认：" + strings.Join(wait, "、")
+	}
+	return line + "（plan status 看全图）"
 }
 
 // remainingEffort sums the estimates of a project's open leaf items.

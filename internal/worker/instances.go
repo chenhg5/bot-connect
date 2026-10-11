@@ -59,7 +59,7 @@ func (m *Manager) instanceLocked(base *workerState, u identity.User) (*workerSta
 	spec.Name, spec.WorkDir = name, dir
 	spec.SessionID, spec.Sessions, spec.DirSessions, spec.PerUser, spec.Public = "", nil, false, "", false
 	spec.Description = base.Spec.Description + " — private workspace of " + u.Display()
-	isolate := true // a member's worker never sees the owner's Claude setup
+	isolate := true // a member's worker never sees the principal's Claude setup
 	spec.Isolate = &isolate
 	if err := m.addLocked(spec, true); err != nil {
 		return nil, err
@@ -251,7 +251,7 @@ type WorkerInfo struct {
 	Dir         string    `json:"dir"`
 	Description string    `json:"description,omitempty"`
 	Base        string    `json:"base,omitempty"`   // instance / sub-worker of
-	User        string    `json:"user,omitempty"`   // owner of a per-user instance
+	User        string    `json:"user,omitempty"`   // principal of a per-user instance
 	Parent      string    `json:"parent,omitempty"` // sub-worker continuing another session
 	Session     string    `json:"session,omitempty"`
 	Owned       []string  `json:"owned_sessions,omitempty"`

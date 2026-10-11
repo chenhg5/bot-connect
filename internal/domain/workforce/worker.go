@@ -42,7 +42,7 @@ type Worker struct {
 	Trust       Trust        `json:"trust"`
 	Description string       `json:"description,omitempty"`
 	Skills      []string     `json:"skills,omitempty"`
-	Principal   string       `json:"principal,omitempty"` // owner | self | the other bot's owner
+	Principal   string       `json:"principal,omitempty"` // principal | self | the other bot's principal
 	Interaction Interaction  `json:"interaction"`
 	Contact     []Route      `json:"contact,omitempty"`
 	Norms       Norms        `json:"norms"`
@@ -68,7 +68,7 @@ type Interaction struct {
 // Consent: what a person agreed to take from the bot.
 type Consent struct {
 	Given bool       `json:"given"`
-	From  []string   `json:"from,omitempty"` // roles or user ids; empty = owner only
+	From  []string   `json:"from,omitempty"` // roles or user ids; empty = principal only
 	Until *time.Time `json:"until,omitempty"`
 }
 
@@ -166,9 +166,9 @@ func (w Worker) MayApprove(action, scope string) bool {
 }
 
 // AcceptsFrom reports whether the worker takes work from this actor.
-// Controlled agents take work from the owner and admins; people need consent.
+// Controlled agents take work from the principal and admins; people need consent.
 func (w Worker) AcceptsFrom(by Actor, now time.Time) bool {
-	if w.ID == Owner {
+	if w.ID == Principal {
 		return true
 	}
 	if w.Kind.Agentic() && w.Trust == Controlled {
@@ -180,10 +180,10 @@ func (w Worker) AcceptsFrom(by Actor, now time.Time) bool {
 	}
 	from := c.From
 	if len(from) == 0 {
-		from = []string{string(RoleOwner)}
+		from = []string{string(RolePrincipal)}
 	}
 	for _, f := range from {
-		if f == string(by.Role) || f == by.UserID || (f == string(RoleAdmin) && by.Role == RoleOwner) {
+		if f == string(by.Role) || f == by.UserID || (f == string(RoleAdmin) && by.Role == RolePrincipal) {
 			return true
 		}
 	}
@@ -213,7 +213,7 @@ type Route struct {
 	Kind       RouteKind `json:"kind"`
 	Address    string    `json:"address"`
 	MinUrgency Urgency   `json:"min_urgency,omitempty"`
-	Approval   bool      `json:"approval,omitempty"` // the owner approves each use
+	Approval   bool      `json:"approval,omitempty"` // the principal approves each use
 }
 
 // Window is a daily range "HH:MM"–"HH:MM", optionally on some weekdays; End

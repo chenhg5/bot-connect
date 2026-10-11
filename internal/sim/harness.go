@@ -29,9 +29,9 @@ import (
 )
 
 const (
-	platformName = "eval"
-	ownerUser    = "u-owner"
-	ownerChat    = "dm-owner"
+	platformName  = "eval"
+	principalUser = "u-principal"
+	principalChat = "dm-principal"
 )
 
 func userOf(person string) string { return "u-" + person }
@@ -39,7 +39,7 @@ func dmOf(person string) string   { return "dm-" + person }
 
 // Msg is something the bot sent.
 type Msg struct {
-	Chat string // "dm-owner", "dm-wangwu", "user:u-wangwu", a group id
+	Chat string // "dm-principal", "dm-wangwu", "user:u-wangwu", a group id
 	Text string
 	At   time.Time
 }
@@ -153,11 +153,11 @@ func New(ctx context.Context, cfg *config.Config, c Case) (*Harness, error) {
 	}
 	h := &Harness{Case: c, Clock: NewFakeClock(*start), plat: &platform{}, rec: &recorder{}, items: map[string]ItemID{}, dir: dir}
 	bc := cfg.Bots[0]
-	bc.Name, bc.OwnerName, bc.Dir = "eval bot", "chicken", dir
+	bc.Name, bc.PrincipalName, bc.Dir = "eval bot", "chicken", dir
 	bc.Brain.WorkDir = dir + "/brain"
 	ctx, h.stop = context.WithCancel(ctx)
 
-	policy := identity.NewStaticPolicy([]string{ownerUser}, nil)
+	policy := identity.NewStaticPolicy([]string{principalUser}, nil)
 	wm, err := worker.NewManager(nil, nil, dir)
 	if err != nil {
 		return nil, err
@@ -171,10 +171,11 @@ func New(ctx context.Context, cfg *config.Config, c Case) (*Harness, error) {
 		human.FeishuDM: human.ReacherFunc(func(ctx context.Context, addr, text string, _ workforce.Urgency) (string, error) {
 			return h.plat.SendUser(ctx, addr, text)
 		}),
-		human.OwnerChat: human.ReacherFunc(func(ctx context.Context, _, text string, _ workforce.Urgency) (string, error) {
-			return "", h.Hub.NotifyOwner(ctx, text)
+		human.PrincipalChat: human.ReacherFunc(func(ctx context.Context, _, text string, _ workforce.Urgency) (string, error) {
+			return "", h.Hub.NotifyPrincipal(ctx, text)
 		}),
 	}})
+	bc.Style = config.Style{Risk: c.Style.Risk, AskBefore: c.Style.AskBefore, BudgetMonth: c.Style.BudgetMonth, Parallel: c.Style.Parallel}
 	assemble.WirePM(h.App, h.Hub, bc, cfg.Judge)
 	h.judge = assemble.NewJudge(cfg.Judge)
 
@@ -184,14 +185,14 @@ func New(ctx context.Context, cfg *config.Config, c Case) (*Harness, error) {
 	if err := h.srv.Start("127.0.0.1:0"); err != nil {
 		return nil, err
 	}
-	b, err := brain.New(bc.Brain, h.Hub, wm, h.srv, reg.Names(), worker.Scope{Bot: bc.Name}, bc.Name, bc.OwnerName)
+	b, err := brain.New(bc.Brain, h.Hub, wm, h.srv, reg.Names(), worker.Scope{Bot: bc.Name}, bc.Name, bc.PrincipalName)
 	if err != nil {
 		return nil, err
 	}
 	b.SetPM(h.App)
 	h.Hub.SetBrain(b)
 	h.Hub.AddPlatform(h.plat)
-	h.Hub.SetOwnerChat(platformName, ownerChat)
+	h.Hub.SetPrincipalChat(platformName, principalChat)
 	if err := h.Hub.Start(ctx); err != nil {
 		return nil, err
 	}
@@ -216,10 +217,10 @@ func (h *Harness) setup(ctx context.Context) error {
 	if err := a.EnsureOrg(ctx, "公司"); err != nil {
 		return err
 	}
-	owner := workforce.Worker{ID: Owner, Name: "chicken", Kind: workforce.Human, Trust: workforce.External, Physical: true,
-		Consent: workforce.Consent{Given: true}, Identities: []string{platformName + ":" + ownerUser},
-		Contact: []workforce.Route{{Kind: human.OwnerChat, Address: "owner"}}}
-	if err := a.UpsertWorker(ctx, sys, owner); err != nil {
+	principal := workforce.Worker{ID: Principal, Name: "chicken", Kind: workforce.Human, Trust: workforce.External, Physical: true,
+		Consent: workforce.Consent{Given: true}, Identities: []string{platformName + ":" + principalUser},
+		Contact: []workforce.Route{{Kind: human.PrincipalChat, Address: "principal"}}}
+	if err := a.UpsertWorker(ctx, sys, principal); err != nil {
 		return err
 	}
 	for _, p := range h.Case.People {
@@ -303,7 +304,8 @@ func (h *Harness) setup(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		sp := planning.Spec{Project: ProjectID(firstNonEmpty(it.Project, string(OrgProject))), Title: it.Title, Acceptance: it.Done, Due: due, Estimate: est}
+		sp := planning.Spec{Project: ProjectID(firstNonEmpty(it.Project, string(OrgProject))), Title: it.Title, Acceptance: it.Done, Due: due, Estimate: est,
+			Node: planning.Node{Routine: it.Routine}}
 		for _, n := range it.Needs {
 			k, d, _ := strings.Cut(n, ":")
 			sp.Needs = append(sp.Needs, planning.Need{Kind: NeedKind(k), Detail: d})
@@ -311,25 +313,25 @@ func (h *Harness) setup(ctx context.Context) error {
 		for _, d := range it.DependsOn {
 			sp.DependsOn = append(sp.DependsOn, h.items[d])
 		}
-		x, err := a.PlanItem(ctx, Actor{UserID: ownerUser, Worker: Owner, Role: RoleOwner}, sp)
+		x, err := a.PlanItem(ctx, Actor{UserID: principalUser, Worker: Principal, Role: RolePrincipal}, sp)
 		if err != nil {
 			return err
 		}
 		h.items[firstNonEmpty(it.Ref, it.Title)] = x.ID
 		if it.Status == "done" {
-			if err := a.CompleteItem(ctx, Actor{UserID: ownerUser, Role: RoleOwner}, x.ID); err != nil {
+			if err := a.CompleteItem(ctx, Actor{UserID: principalUser, Role: RolePrincipal}, x.ID); err != nil {
 				return err
 			}
 		}
 	}
-	ownerActor := Actor{UserID: ownerUser, Worker: Owner, Role: RoleOwner, Via: "setup"}
+	principalActor := Actor{UserID: principalUser, Worker: Principal, Role: RolePrincipal, Via: "setup"}
 	for _, as := range h.Case.Assignments {
 		id, ok := h.items[as.Item]
 		if !ok {
 			return fmt.Errorf("assignment: no item ref %q", as.Item)
 		}
-		x, err := a.Delegate(ctx, ownerActor, app.DelegateSpec{Item: id, Worker: WorkerID(as.Worker), Kind: delegation.AskKind(as.Kind),
-			Why: NeedKind(as.Why), Options: as.Options, Brief: delegation.Brief{Goal: as.Goal}, Conv: platformName + ":" + ownerChat})
+		x, err := a.Delegate(ctx, principalActor, app.DelegateSpec{Item: id, Worker: WorkerID(as.Worker), Kind: delegation.AskKind(as.Kind),
+			Why: NeedKind(as.Why), Options: as.Options, Brief: delegation.Brief{Goal: as.Goal}, Conv: platformName + ":" + principalChat})
 		if err != nil {
 			return err
 		}

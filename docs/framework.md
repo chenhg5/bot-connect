@@ -9,13 +9,13 @@ or a plugin.
 | Brain agent | `Adapter` interface; per-turn `Request` → `Response`; session resume; fallback to a fresh session | `brain.agent` (claudecode / codex / command / your registered adapter), model, provider, extra args, env |
 | Brain prompt | **protocol** section: context block, task reports, delegation semantics, roles | **persona**: `brain.system_prompt` / `system_prompt_file` (replaces the default persona) |
 | Brain tools | bot-connect tool set, served over MCP + CLI, bound to the turn's conversation and role | which bot tools are enabled (`brain.tools`), extra MCP servers (`brain.mcp_servers`), the agent's own built-ins (`builtin_tools`, sandbox) |
-| Identity | every inbound message resolved to a `User` (platform, id, union id, name, email, role); `Directory` / `OwnerSource` / `Policy` interfaces | `bot.owners`, `bot.admins` (match id / union id / email); custom `Policy` in code |
-| Permissions | role checks inside tools; a turn runs at the least privilege of its senders | who is owner/admin; what workers may do (`permission_mode`, `sandbox`) |
-| Scheduling | lanes per chat, coalescing, debounce, priority (owner/admin > task report > visitor), global concurrency cap | the numbers (`max_concurrent_turns`, `debounce`, `turn_timeout`) |
+| Identity | every inbound message resolved to a `User` (platform, id, union id, name, email, role); `Directory` / `PrincipalSource` / `Policy` interfaces | `bot.principals`, `bot.admins` (match id / union id / email); custom `Policy` in code |
+| Permissions | role checks inside tools; a turn runs at the least privilege of its senders | who is principal/admin; what workers may do (`permission_mode`, `sandbox`) |
+| Scheduling | lanes per chat, coalescing, debounce, priority (principal/admin > task report > visitor), global concurrency cap | the numbers (`max_concurrent_turns`, `debounce`, `turn_timeout`) |
 | Workers & sessions | one queue per session (shared by all bots); reading agents' own session stores; sessions reachable **only** through a worker's allowlist; waits while a session is in use locally | which workers exist; which sessions each covers (`session_id`, `sessions`, `dir_sessions`); `deny_read`; which bots may use which workers |
-| Bots | many bots per process, each with its own state dir, tool server and conversations | `[[bots]]`: channel, brain, persona, owners/admins, `workers` |
+| Bots | many bots per process, each with its own state dir, tool server and conversations | `[[bots]]`: channel, brain, persona, principals/admins, `workers` |
 | Observability | `audit.Sink` interface; events: inbound, turn_start/end, tool_call, task, outbound | where they go (default: `<data_dir>/audit/YYYY-MM-DD.jsonl`; add sinks in code) |
-| IM channel | `hub.Platform` (+ optional `identity.Directory`, `identity.OwnerSource`) | which channels: Feishu via SDK (`app_id`) or via lark-cli (`larkcli_profile`), console |
+| IM channel | `hub.Platform` (+ optional `identity.Directory`, `identity.PrincipalSource`) | which channels: Feishu via SDK (`app_id`) or via lark-cli (`larkcli_profile`), console |
 
 ## Interfaces
 
@@ -40,8 +40,8 @@ type Platform interface {
 
 // identity: who is this, what may they do
 type Directory   interface { LookupUser(ctx, id string) (identity.User, error) }   // optional, per platform
-type OwnerSource interface { DefaultOwners(ctx) []string }                        // optional, per platform
-type Policy      interface { Role(identity.User) identity.Role }                  // owner | admin | visitor
+type PrincipalSource interface { DefaultPrincipals(ctx) []string }                        // optional, per platform
+type Policy      interface { Role(identity.User) identity.Role }                  // principal | admin | visitor
 
 // audit: where the record goes
 type Sink interface { Record(audit.Event) }

@@ -14,8 +14,8 @@ import (
 
 type nopMsg struct{}
 
-func (nopMsg) NotifyOwner(context.Context, string) error    { return nil }
-func (nopMsg) SendTo(context.Context, string, string) error { return nil }
+func (nopMsg) NotifyPrincipal(context.Context, string) error { return nil }
+func (nopMsg) SendTo(context.Context, string, string) error  { return nil }
 
 func rpc(t *testing.T, url, body string) map[string]any {
 	t.Helper()
@@ -36,7 +36,7 @@ func TestMCPPrivilege(t *testing.T) {
 		t.Fatal(err)
 	}
 	visitor, closeV := s.Open(tools.TurnContext{ConvKey: "c", Caller: worker.Requester{ID: "jack", Name: "jack", Role: identity.RoleVisitor}})
-	owner, _ := s.Open(tools.TurnContext{ConvKey: "c", Caller: worker.Requester{ID: "me", Role: identity.RoleOwner}})
+	principal, _ := s.Open(tools.TurnContext{ConvKey: "c", Caller: worker.Requester{ID: "me", Role: identity.RolePrincipal}})
 
 	init := rpc(t, s.MCPURL(visitor), `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}`)
 	if init["result"] == nil {
@@ -46,8 +46,8 @@ func TestMCPPrivilege(t *testing.T) {
 		r := rpc(t, s.MCPURL(tok), `{"jsonrpc":"2.0","id":2,"method":"tools/list"}`)
 		return len(r["result"].(map[string]any)["tools"].([]any))
 	}
-	if v, o := count(visitor), count(owner); v >= o {
-		t.Fatalf("visitor sees %d tools, owner %d", v, o)
+	if v, o := count(visitor), count(principal); v >= o {
+		t.Fatalf("visitor sees %d tools, principal %d", v, o)
 	}
 	call := rpc(t, s.MCPURL(visitor), `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"agent_task","arguments":{"worker":"x","instruction":"rm -rf"}}}`)
 	if call["result"].(map[string]any)["isError"] != true {

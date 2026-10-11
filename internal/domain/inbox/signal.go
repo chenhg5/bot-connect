@@ -74,8 +74,10 @@ type Signal struct {
 	Level     int        `json:"level"`          // 0 low, 1 medium, 2 high
 	Wake      string     `json:"wake,omitempty"` // now | batch | ignore (decided at intake)
 	Status    Status     `json:"status"`
-	Until     *time.Time `json:"until,omitempty"` // deferred until
-	Note      string     `json:"note,omitempty"`  // why handled / ignored / deferred
+	Until     *time.Time `json:"until,omitempty"`      // deferred until
+	Note      string     `json:"note,omitempty"`       // why handled / ignored / deferred
+	Hints     []string   `json:"hints,omitempty"`      // what the L1 judgment read in it, for the brain
+	NeedsPlan bool       `json:"needs_plan,omitempty"` // a goal or multi-step request: plan before handing anything out
 	CreatedAt time.Time  `json:"created_at"`
 	SeenAt    time.Time  `json:"seen_at,omitempty"`
 	UpdatedAt time.Time  `json:"updated_at"`

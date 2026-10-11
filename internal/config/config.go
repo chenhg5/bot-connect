@@ -73,13 +73,13 @@ func (p Provider) ClaudeEnv() []string {
 }
 
 type Bot struct {
-	Name      string `toml:"name"`
-	OwnerName string `toml:"owner_name"`
+	Name          string `toml:"name"`
+	PrincipalName string `toml:"principal_name"`
 	// Who the bot belongs to / trusts. Match platform user id, union id or
-	// email. Empty owners = the IM app's owner (if the platform can tell).
-	Owners  []string `toml:"owners"`
-	Admins  []string `toml:"admins"`  // may command workers like the owner
-	Members []string `toml:"members"` // own isolated workspaces + ask read-only workers; "*" = everyone
+	// email. Empty principals = the IM app's owner (if the platform can tell).
+	Principals []string `toml:"principals"`
+	Admins     []string `toml:"admins"`  // may command workers like the principal
+	Members    []string `toml:"members"` // own isolated workspaces + ask read-only workers; "*" = everyone
 	// Roles that may hand questions to read-only shared workers
 	// (default ["member"]; add "visitor" to let anyone ask).
 	AskRoles []string `toml:"ask_roles"`
@@ -97,6 +97,9 @@ type Bot struct {
 	// session (separate memory per conversation). Default: one session for
 	// everything, with each turn limited to the rights of whoever it is for.
 	IsolateVisitors bool `toml:"isolate_visitors"`
+	// Style: how the principal wants things run (risk appetite, what to
+	// ask first, budget, how much agent work plans may run at once).
+	Style Style `toml:"style"`
 	// Wake: which signals wake the brain now, which wait for a batch.
 	Wake               Wake     `toml:"wake"`
 	MaxConcurrentTurns int      `toml:"max_concurrent_turns"`
@@ -121,7 +124,7 @@ type Brain struct {
 	ReadDirs []string `toml:"read_dirs"`
 	// claudecode: paths its file tools may never read (default: same as workers).
 	DenyRead *[]string `toml:"deny_read"`
-	// claudecode: keep the owner's Claude setup (~/.claude/CLAUDE.md, memory,
+	// claudecode: keep the principal's Claude setup (~/.claude/CLAUDE.md, memory,
 	// hooks, plugins, settings) out of the brain. Default true. Uses --bare
 	// when an API key is available, else --setting-sources "".
 	Isolate *bool `toml:"isolate"`
@@ -226,7 +229,7 @@ type Worker struct {
 	// writes stay in work_dir. Default true; set false if a workflow needs
 	// broader access.
 	Confine *bool `toml:"confine" json:"confine,omitempty"`
-	// Don't load the owner's agent setup into this worker (Claude:
+	// Don't load the principal's agent setup into this worker (Claude:
 	// ~/.claude/CLAUDE.md, settings, hooks, MCP connectors; Codex: an isolated
 	// CODEX_HOME without ~/.codex config, global AGENTS.md, plugins). Default: true for
 	// workers others can use (per_user instances, readonly), false otherwise.
@@ -294,7 +297,7 @@ type Person struct {
 	MaxNudgesPerDay  int       `toml:"max_nudges_per_day" json:"max_nudges_per_day,omitempty"`
 	MinNudgeInterval Duration  `toml:"min_nudge_interval" json:"min_nudge_interval,omitempty"`
 	Consent          bool      `toml:"consent" json:"consent"`                     // agreed to take work from the bot
-	ConsentFrom      []string  `toml:"consent_from" json:"consent_from,omitempty"` // roles / user ids (default: owner)
+	ConsentFrom      []string  `toml:"consent_from" json:"consent_from,omitempty"` // roles / user ids (default: principal)
 	Authority        []Grant   `toml:"authority" json:"authority,omitempty"`
 	Capabilities     []string  `toml:"capabilities" json:"capabilities,omitempty"` // systems they can use that agents can't
 	Contact          []Contact `toml:"contact" json:"contact,omitempty"`
@@ -346,6 +349,14 @@ func (w Wake) Modes() map[string]string {
 	return out
 }
 
+// Style of the principal.
+type Style struct {
+	Risk        string   `toml:"risk"`         // cautious | balanced (default) | bold
+	AskBefore   []string `toml:"ask_before"`   // e.g. ["花钱", "对外发布", "不可逆的操作"]
+	BudgetMonth float64  `toml:"budget_month"` // the bot may spend this much a month on its own
+	Parallel    int      `toml:"parallel"`     // agent tasks plans may run at once (default 4)
+}
+
 // Judge configures the L1 judgment layer.
 type Judge struct {
 	Provider      string  `toml:"provider"` // "jev" (default when a key is set) | "none"
@@ -355,8 +366,9 @@ type Judge struct {
 	URL           string  `toml:"url"`
 	LeakThreshold float64 `toml:"leak_threshold"` // block outgoing messages at or above (default 0.6)
 	Triage        *bool   `toml:"triage"`         // classify incoming messages (default true)
-	Guard         *bool   `toml:"guard"`          // check messages to non-owners (default true)
+	Guard         *bool   `toml:"guard"`          // check messages to non-principals (default true)
 	Staffing      *bool   `toml:"staffing"`       // semantic matching in find_people (default true)
+	PlanReview    *bool   `toml:"plan_review"`    // an outside look at plans before they are proposed (default true)
 }
 
 // Key returns the API key (direct, or from the environment).
@@ -485,8 +497,8 @@ func (c *Config) normalize() error {
 }
 
 func applyBotDefaults(b *BotConfig) {
-	if b.OwnerName == "" {
-		b.OwnerName = "owner"
+	if b.PrincipalName == "" {
+		b.PrincipalName = "principal"
 	}
 	if b.MaxConcurrentTurns <= 0 {
 		b.MaxConcurrentTurns = 3
@@ -642,7 +654,7 @@ func (c *Config) validate() error {
 		if p.ID == "" || strings.ContainsAny(p.ID, " @#") {
 			return fmt.Errorf("people: each person needs an id without spaces, @ or #")
 		}
-		if people[p.ID] || seen[p.ID] || tpls[p.ID] || p.ID == "owner" {
+		if people[p.ID] || seen[p.ID] || tpls[p.ID] || p.ID == "principal" {
 			return fmt.Errorf("people: id %q is already used (or reserved)", p.ID)
 		}
 		people[p.ID] = true
@@ -661,7 +673,7 @@ func (c *Config) validate() error {
 		}
 	}
 	for _, r := range c.Org.Roles {
-		if !seen[r.Worker] && !people[r.Worker] && r.Worker != "owner" {
+		if !seen[r.Worker] && !people[r.Worker] && r.Worker != "principal" {
 			return fmt.Errorf("org role %q: unknown worker %q", r.Role, r.Worker)
 		}
 	}

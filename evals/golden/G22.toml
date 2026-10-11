@@ -1,0 +1,41 @@
+id = "G22"
+title = "规划：一年赚 100 万（激进）——敢投入，但有止损"
+critical = false
+milestone = "planning"
+now = "2026-10-12 10:00"
+notes = "同样的目标，激进的委托人：推荐可以更大胆，但调研和止损条件不能少。"
+
+[style]
+risk = "bold"
+budget_month = 20000
+
+[[agents]]
+id = "researcher"
+description = "研究型 agent：调研市场、商业模式、竞品和数据，写分析报告"
+capabilities = ["web:read"]
+
+[[steps]]
+say = "一年内帮我赚到100万。我有 20 万可以投，每周 10 小时，会写代码，有个 3k star 的开源项目。不碰炒币，不借钱。"
+timeout = "5m"
+  [[steps.expect]]
+  type = "judge"
+  to = "principal"
+  question = "这条回复是否在推进这个目标：要么已经安排了调研，要么只问了几个方案真正依赖、消息里还没说的问题（比如止损线），而不是重复问已经给出的信息？"
+  at_least = 0.6
+  why = "不重复问已经说过的约束"
+
+[[steps]]
+say = "亏到 10 万就停。20 万是闲钱，我接受高风险换高回报。"
+timeout = "5m"
+  [[steps.expect]]
+  type = "plan"
+  kind = "goal"
+  parallel = true
+  agents_first = true
+  why = "几条路径并行调研"
+  [[steps.expect]]
+  type = "judge"
+  to = "principal"
+  question = "这条回复（或它描述的计划）是否既体现了愿意较快投入、尝试高回报的路径，又说明了止损条件或验证节点（什么情况下停下或换方向）？"
+  at_least = 0.6
+  why = "激进但有止损"

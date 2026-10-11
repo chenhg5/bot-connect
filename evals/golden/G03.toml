@@ -1,5 +1,5 @@
 id = "G3"
-title = "带截止的新需求：按项目角色找人、日期正确、告诉主人"
+title = "带截止的新需求：按项目角色找人、日期正确、告诉委托人"
 critical = true
 now = "2026-10-12 10:00"
 
@@ -47,6 +47,6 @@ say = "下周三前把官网改版的埋点方案定下来，要有指标清单�
   why = "王五收到请求"
   [[steps.expect]]
   type = "reply"
-  to = "owner"
+  to = "principal"
   contains_any = ["王五", "wangwu"]
-  why = "告诉主人交给了谁"
+  why = "告诉委托人交给了谁"

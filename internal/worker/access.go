@@ -23,13 +23,13 @@ type Access struct {
 
 // access applies the rules:
 //
-//	                      owner        admin        member                 visitor
+//	                      principal        admin        member                 visitor
 //	shared worker         all          all          —                      public: status
 //	shared, readonly      all          all          ask (if ask_roles)     ask (if ask_roles)
 //	shared, per_user      all          all          delegate → own copy     —
 //	instance of user U    all          see+read     U only: all            —
 func (s Scope) access(w *workerState) Access {
-	if w.Template != "" { // created by a brain from a template: its bot's owner/admins only
+	if w.Template != "" { // created by a brain from a template: its bot's principal/admins only
 		if (s.Template != nil && !s.Template[w.Template]) || (s.Bot != "" && w.Bot != "" && w.Bot != s.Bot) || !s.Caller.Role.Privileged() {
 			return Access{}
 		}
@@ -41,7 +41,7 @@ func (s Scope) access(w *workerState) Access {
 	role := s.Caller.Role
 	if w.UserID != "" { // a member's private instance
 		switch {
-		case w.UserID == s.Caller.ID || role == identity.RoleOwner:
+		case w.UserID == s.Caller.ID || role == identity.RolePrincipal:
 			return Access{See: true, Read: true, Delegate: true}
 		case role == identity.RoleAdmin:
 			return Access{See: true, Read: true}

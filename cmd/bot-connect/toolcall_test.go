@@ -16,8 +16,8 @@ import (
 
 type nopMsg struct{}
 
-func (nopMsg) NotifyOwner(context.Context, string) error    { return nil }
-func (nopMsg) SendTo(context.Context, string, string) error { return nil }
+func (nopMsg) NotifyPrincipal(context.Context, string) error { return nil }
+func (nopMsg) SendTo(context.Context, string, string) error  { return nil }
 
 // The path a shell-agent brain uses: `bot-connect tool call` against a live
 // tool server, with exit codes an agent can act on.
@@ -30,7 +30,7 @@ func TestToolCallAgainstToolServer(t *testing.T) {
 	if err := srv.Start("127.0.0.1:0"); err != nil {
 		t.Fatal(err)
 	}
-	owner, _ := srv.Open(tools.TurnContext{ConvKey: "c", Caller: identity.User{ID: "me", Role: identity.RoleOwner}})
+	principal, _ := srv.Open(tools.TurnContext{ConvKey: "c", Caller: identity.User{ID: "me", Role: identity.RolePrincipal}})
 	visitor, _ := srv.Open(tools.TurnContext{ConvKey: "c", Caller: identity.User{ID: "v", Role: identity.RoleVisitor}})
 
 	run := func(token string, args ...string) (int, string, string) {
@@ -41,10 +41,10 @@ func TestToolCallAgainstToolServer(t *testing.T) {
 		return a.Main(append([]string{"tool"}, args...)), out.String(), errb.String()
 	}
 
-	if code, out, _ := run(owner, "call", "--name", "list_workers"); code != cli.ExitOK || !strings.Contains(out, "proj") {
+	if code, out, _ := run(principal, "call", "--name", "list_workers"); code != cli.ExitOK || !strings.Contains(out, "proj") {
 		t.Fatalf("list_workers: exit %d %s", code, out)
 	}
-	if code, out, _ := run(owner, "call", "--name", "agent_task", "--args", `{"worker":"proj","instruction":"x"}`, "--dry-run"); code != cli.ExitDryRun || !strings.Contains(out, `"allowed": true`) {
+	if code, out, _ := run(principal, "call", "--name", "agent_task", "--args", `{"worker":"proj","instruction":"x"}`, "--dry-run"); code != cli.ExitDryRun || !strings.Contains(out, `"allowed": true`) {
 		t.Fatalf("dry-run delegate: exit %d %s", code, out)
 	}
 	if len(wm.Tasks()) != 0 {
@@ -53,13 +53,13 @@ func TestToolCallAgainstToolServer(t *testing.T) {
 	if code, _, errb := run(visitor, "call", "--name", "agent_task", "--args", `{"worker":"proj","instruction":"x"}`); code != cli.ExitNotFound && code != cli.ExitPermission {
 		t.Fatalf("visitor delegate: exit %d %s", code, errb)
 	}
-	if code, _, _ := run(owner, "call", "--name", "nope"); code != cli.ExitNotFound {
+	if code, _, _ := run(principal, "call", "--name", "nope"); code != cli.ExitNotFound {
 		t.Fatalf("unknown tool: exit %d", code)
 	}
-	if code, _, _ := run(owner, "call", "--name", "task_status"); code != cli.ExitUsage {
+	if code, _, _ := run(principal, "call", "--name", "task_status"); code != cli.ExitUsage {
 		t.Fatalf("missing required arg: exit %d", code)
 	}
-	if code, _, _ := run(owner, "call", "--name", "list_workers", "--args", "not json"); code != cli.ExitUsage {
+	if code, _, _ := run(principal, "call", "--name", "list_workers", "--args", "not json"); code != cli.ExitUsage {
 		t.Fatalf("bad --args: exit %d", code)
 	}
 }

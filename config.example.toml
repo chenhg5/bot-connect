@@ -2,11 +2,11 @@
 
 [bot]
 name = "alice bot"          # how the bot calls itself
-owner_name = "alice"        # whose bot this is
-# Owner / admins: platform user id, union id, or email. Leave owners empty to
+principal_name = "alice"        # whose bot this is
+# Principal / admins: platform user id, union id, or email. Leave principals empty to
 # use the IM app's owner (Feishu: whoever owns/created the app). Admins may
-# command workers like the owner; everyone else is a visitor.
-owners = []
+# command workers like the principal; everyone else is a visitor.
+principals = []
 admins = []
 members = []                  # own private workspaces + ask read-only workers; ["*"] = everyone
 # ask_roles = ["member"]      # who may ask read-only workers (add "visitor" to open it up)
@@ -21,17 +21,25 @@ history_limit = 30            # messages of plain-text history kept per conversa
 # a risk, a cadence — becomes an attention signal; this decides which ones wake
 # the brain at once ("now"), which wait for the next batch ("batch"), and which
 # are only recorded ("ignore"). Your private messages and the system's signals
-# go to one continuous owner-side session; colleagues' chats stay separate.
+# go to one continuous principal-side session; colleagues' chats stay separate.
 # [bot.wake]
 # direct_message = "now"
 # worker_reply = "now"
-# relay = "now"          # colleagues' requests passed on with notify_owner
+# relay = "now"          # colleagues' requests passed on with notify_principal
 # risk_high = "now"
 # risk_medium = "batch"
 # cadence = "batch"
 # batch_every = "30m"
 
 # The brain is a pluggable agent; bot-connect only injects tools + prompt + context.
+# How the principal wants things run. The bot shows it to the brain so its
+# recommendations fit, and enforces the limits.
+[bot.style]
+# risk = "balanced"              # cautious | balanced | bold
+# ask_before = ["花钱", "对外发布", "不可逆的操作"]
+# budget_month = 0               # the bot may spend this much a month on its own
+# parallel = 4                   # agent tasks plans may run at once
+
 [brain]
 agent = "claudecode"          # "claudecode" | "codex" | "pi" | "command"  (pi: fastest; needs provider when isolated)
 # work_dir = "~/.bot-connect/brain"
@@ -58,7 +66,7 @@ model = "sonnet"
 # system_prompt = "你是 alice 的助理，说话简洁，周末不派重活。"
 # system_prompt_file = "~/.bot-connect/persona.md"
 # Which bot-connect tools this brain may use (default: all):
-# tools = ["list_workers", "read_worker", "delegate", "task_status", "cancel_task", "send_message", "notify_owner"]
+# tools = ["list_workers", "read_worker", "delegate", "task_status", "cancel_task", "send_message", "notify_principal"]
 # Extra MCP servers for the brain:
 # [[brain.mcp_servers]]
 # name = "jira"
@@ -166,8 +174,8 @@ sandbox = "workspace-write"   # codex -s
 # of work no configured worker fits. A template fixes everything that matters
 # for safety — agent, access level, where the directory comes from; the brain
 # only picks a name, a purpose and (within roots) a directory or repository.
-# Only owner/admin turns can create workers; they are visible to that bot's
-# owner/admins only. Inspect them with `bot-connect template list` / `worker list`.
+# Only principal/admin turns can create workers; they are visible to that bot's
+# principal/admins only. Inspect them with `bot-connect template list` / `worker list`.
 [[templates]]
 name = "scratch"
 description = "一次性的小实验、脚本、调研：在一个全新的空目录里干活"
@@ -196,12 +204,12 @@ idle_ttl = "24h"              # retire automatically after this long idle ("0s" 
 
 # ---- Several bots in one process ----
 # Replace [bot] / [brain] / [feishu] above with one [[bots]] block per bot.
-# Each bot has its own IM app, brain, persona and owners; `workers` limits
+# Each bot has its own IM app, brain, persona and principals; `workers` limits
 # which workers (and therefore which sessions) it can reach.
 #
 # [[bots]]
 # name = "alice bot"
-# owner_name = "alice"
+# principal_name = "alice"
 # workers = ["cc-connect", "bot-connect"]
 # templates = ["scratch"]     # templates it may create workers from (default: all)
 # [bots.brain]
@@ -212,7 +220,7 @@ idle_ttl = "24h"              # retire automatically after this long idle ("0s" 
 #
 # [[bots]]
 # name = "team bot"
-# owner_name = "team"
+# principal_name = "team"
 # admins = ["alice@corp.com"]
 # workers = ["bot-connect"]
 # [bots.feishu]
@@ -230,3 +238,4 @@ idle_ttl = "24h"              # retire automatically after this long idle ("0s" 
 # triage = true
 # guard = true
 # staffing = true
+# plan_review = true             # an outside look at plans before they are proposed
