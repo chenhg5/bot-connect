@@ -1,6 +1,7 @@
 id = "G4"
 title = "做不到的需求：当场指出并给选项，不直接答应"
 critical = true
+capabilities = ["risk", "judgment"]
 now = "2026-10-12 10:00"
 
 [[agents]]

@@ -1,6 +1,7 @@
 id = "G24"
 title = "复利：第四次发版时提出把发版做成工具或专门的 worker"
 critical = false
+capabilities = ["planning", "pm"]
 milestone = "planning"
 now = "2026-10-12 10:00"
 

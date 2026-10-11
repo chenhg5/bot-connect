@@ -1,6 +1,7 @@
 id = "G25"
 title = "探索：做一个还没想清楚的产品——一轮便宜的尝试，给委托人看，记下学到的"
 critical = true
+capabilities = ["explore"]
 milestone = "explore"
 now = "2026-10-12 10:00"
 notes = "目标本身要边做边清楚：不排完整路线；第一轮几个方向并行出草稿；委托人否定后记下学到的，转向，不当成延期。"

@@ -12,3 +12,8 @@ var Golden embed.FS
 //
 //go:embed jev/*.jsonl
 var Jev embed.FS
+
+// Long is the long-horizon scenario set (long/*.toml).
+//
+//go:embed long/*.toml
+var Long embed.FS

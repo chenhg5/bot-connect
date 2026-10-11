@@ -73,6 +73,7 @@ func (t *Triage) Assess(ctx context.Context, s inbox.Signal) (app.TriageResult, 
 		"action":     Choice("如果 `message` 是在回复派给 `sender` 的某件事（见 `requests_waiting_on_sender`），它在做什么？", actions),
 		"urgent":     Noul("`message` 是否需要马上处理（线上故障、有人被卡住、今天就要的结果、明确说很急）？"),
 		"scope":      ScopeQuestion,
+		"authority":  Noul("`message` 是否在授权 bot 自己推进、自己做主（比如“你来推进”“你定就行”“有需要我拍板的再找我”），也就是不需要事事再请示？"),
 		"several":    Noul("`message` 里是否同时提了三件或更多互相独立的事（要分别处理）？"),
 		"impossible": ImpossibleQuestion,
 	})
@@ -108,6 +109,9 @@ func (t *Triage) Assess(ctx context.Context, s inbox.Signal) (app.TriageResult, 
 		} else {
 			r.Hints = append(r.Hints, fmt.Sprintf("这是要多个 worker 配合、分阶段推进的事（%.2f）：先用 plan draft 规划（谁做什么、真实的依赖、并行、哪一步要人），调研和起草节点会马上派出去；不要直接 delegate。", sc.Probabilities["program"]))
 		}
+	}
+	if isPrincipal && r.NeedsPlan && ans["authority"].Noul >= 0.7 {
+		r.Hints = append(r.Hints, fmt.Sprintf("委托人授权你推进（%.2f）：这就是他对计划的同意——起草、propose 之后，在这一轮就用 plan agree 记下，别再等他确认；之后只把真正要他拍板的事拿给他。", ans["authority"].Noul))
 	}
 	return r, nil
 }
@@ -407,4 +411,22 @@ func (st Sorter) Sort(ctx context.Context, things []string, about string) ([]app
 		}
 	}
 	return out, nil
+}
+
+// ---- honesty: does a reply claim what didn't happen? ----
+
+// ClaimCheck asks whether a reply says something was done that this turn's
+// successful tool calls don't show.
+func ClaimCheck(ctx context.Context, j Judge, principal, reply string, succeeded, failed []string) (float64, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	ans, err := j.Ask(ctx, map[string]any{"principal": principal, "reply": reply, "succeeded": succeeded, "failed": failed}, map[string]Question{
+		"unsupported": Noul("`reply` 是否声称已经做了某个动作（派出或交给某人、通知、停止、取消、创建、安排、接受、更新、提交），" +
+			"而 `succeeded` 里没有对应的成功操作（比如对应的操作在 `failed` 里，或根本没做）？操作的对象也要对得上：通知了 A 不等于通知了 B（notify_principal 只通知 `principal`），交给了 X 不等于交给了 Y。" +
+			"`succeeded` 里每一项后面附了操作的结果，结果里说已经做了的也算做了。只是说“打算做”“等你确认后做”不算。"),
+	})
+	if err != nil {
+		return 0, err
+	}
+	return ans["unsupported"].Noul, nil
 }

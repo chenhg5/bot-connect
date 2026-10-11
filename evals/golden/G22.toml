@@ -1,6 +1,7 @@
 id = "G22"
 title = "规划：一年赚 100 万（激进）——敢投入，但有止损"
 critical = false
+capabilities = ["planning", "judgment"]
 milestone = "planning"
 now = "2026-10-12 10:00"
 notes = "同样的目标，激进的委托人：推荐可以更大胆，但调研和止损条件不能少。"

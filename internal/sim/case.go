@@ -38,11 +38,19 @@ type Case struct {
 	Assignments []AssignSpec  `toml:"assignments"`
 
 	Style StyleSpec `toml:"style"` // the principal's style
+	// Principal: scripted answers in long runs (a question to the principal
+	// gets Say after Reply).
+	Principal PrincipalSpec `toml:"principal"`
 
 	Steps  []Step  `toml:"steps"`
 	Expect []Check `toml:"expect"` // after all steps
 
 	file string
+}
+
+type PrincipalSpec struct {
+	Reply string `toml:"reply"`
+	Say   string `toml:"say"`
 }
 
 type StyleSpec struct {
@@ -62,9 +70,24 @@ type PersonSpec struct {
 	WorkHours   string   `toml:"work_hours"` // "09:00-19:00"
 	Authority   []string `toml:"authority"`  // actions they may approve
 	Physical    *bool    `toml:"physical"`
+	// Scripted behaviour for long runs: answer requests after Reply ("2h")
+	// with Policy — accept (default) | decline | ignore | counter:+2d — and
+	// deliver accepted work after Work ("1d"). Asks for an answer get Answer
+	// (default approve).
+	Reply  string `toml:"reply"`
+	Policy string `toml:"policy"`
+	Work   string `toml:"work"`
+	Answer string `toml:"answer"`
+	LLM    bool   `toml:"llm"` // write deliverables with a small model
 }
 
 type AgentSpec struct {
+	// Work: how long it takes to deliver what it accepted ("4h"); empty =
+	// only when a step says deliver.
+	Work string `toml:"work"`
+	// LLM: write deliverables with a small real model (claude -p, haiku)
+	// instead of a template, so reviewing them means something.
+	LLM          bool     `toml:"llm"`
 	ID           string   `toml:"id"`
 	Name         string   `toml:"name"`
 	Description  string   `toml:"description"`
@@ -127,6 +150,7 @@ type Step struct {
 	From    string `toml:"from"`  // "principal" (default) or a person id
 	Group   string `toml:"group"` // say it in this group chat (a mention)
 	Advance string `toml:"advance"`
+	Run     string `toml:"run"`     // let time pass hour by hour ("14d"): people and agents act, the bot reacts
 	Deliver string `toml:"deliver"` // an agent delivers its open assignment: agent id
 	Result  string `toml:"result"`
 	Timeout string `toml:"timeout"`
@@ -172,8 +196,15 @@ type Check struct {
 	Parallel    bool     `toml:"parallel"`     // plan: the first batch has two or more nodes
 	AgentsFirst bool     `toml:"agents_first"` // plan: no research or drafting handed to a person without a reason
 	Compounding bool     `toml:"compounding"`
-	Learned     int      `toml:"learned"` // plan: at least this many rounds recorded  // plan: has a node that builds something for repeated work
-	Why         string   `toml:"why"`     // what the check protects, shown when it fails
+	Learned     int      `toml:"learned"` // plan: at least this many rounds recorded
+	// outcome (after a long run): the project's share of done work, how many
+	// messages the principal got, and whether anything went past its due date
+	// without the principal hearing about it.
+	Project      string  `toml:"project"`
+	DoneAtLeast  float64 `toml:"done_at_least"`
+	MaxMessages  int     `toml:"max_messages"`
+	NoSilentMiss bool    `toml:"no_silent_miss"` // plan: has a node that builds something for repeated work
+	Why          string  `toml:"why"`            // what the check protects, shown when it fails
 }
 
 // LoadDir reads every *.toml case in a directory, sorted by id.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/chenhg5/bot-connect/evals"
 	"github.com/chenhg5/bot-connect/internal/brain"
@@ -61,5 +62,39 @@ func TestHarnessRunsTheFollowUpCaseWithoutAModel(t *testing.T) {
 	r := h.Run(context.Background())
 	if !r.Pass {
 		t.Fatalf("G9 with the scripted brain: %v\n%s", r.Failures, r.Transcript)
+	}
+}
+
+func TestEveryCaseDeclaresCapabilities(t *testing.T) {
+	known := map[string]bool{"triage": true, "planning": true, "explore": true, "delegation": true, "risk": true, "state": true,
+		"pm": true, "boundaries": true, "communication": true, "judgment": true}
+	cases, err := LoadFS(evals.Golden, "golden")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range cases {
+		if len(c.Capabilities) == 0 {
+			t.Errorf("%s declares no capabilities", c.ID)
+		}
+		for _, x := range c.Capabilities {
+			if !known[x] {
+				t.Errorf("%s: unknown capability %q", c.ID, x)
+			}
+		}
+	}
+}
+
+func TestLongScenariosParse(t *testing.T) {
+	cases, err := LoadFS(evals.Long, "long")
+	if err != nil || len(cases) == 0 {
+		t.Fatalf("long scenarios: %v (%d)", err, len(cases))
+	}
+}
+
+func TestParseSpan(t *testing.T) {
+	for in, want := range map[string]time.Duration{"4h": 4 * time.Hour, "2d": 48 * time.Hour, "1w": 7 * 24 * time.Hour, "": 0} {
+		if got, err := parseSpan(in); err != nil || got != want {
+			t.Fatalf("parseSpan(%q) = %v %v", in, got, err)
+		}
 	}
 }

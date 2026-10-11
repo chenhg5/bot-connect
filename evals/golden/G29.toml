@@ -1,0 +1,46 @@
+id = "G29"
+title = "风险（变体）：负责人突然请假，截止就在后天——主动说，带选项"
+critical = true
+capabilities = ["risk"]
+now = "2026-10-12 10:00"
+
+[[people]]
+id = "wangwu"
+name = "王五"
+consent = true
+away = "明天起请假一周"
+
+[[people]]
+id = "zhaoliu"
+name = "赵六"
+description = "数据分析，也做过埋点"
+consent = true
+
+[[projects]]
+id = "P1"
+title = "十月官网改版"
+priority = "P1"
+
+[[items]]
+ref = "track"
+project = "P1"
+title = "埋点方案"
+due = "2026-10-14 18:00"
+estimate = "1d"
+
+[[assignments]]
+item = "track"
+worker = "wangwu"
+why = "knowledge"
+goal = "定首页埋点方案"
+status = "accepted"
+
+[[steps]]
+advance = "1m"
+timeout = "4m"
+  [[steps.expect]]
+  type = "judge"
+  to = "principal"
+  question = "这条消息是否主动告诉委托人：埋点方案的负责人王五要请假、后天的截止有风险，并给出了至少一个具体的应对选项（比如换赵六接手、王五请假前交接、延期）？"
+  at_least = 0.7
+  why = "风险要早说，带着选项"

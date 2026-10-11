@@ -110,6 +110,8 @@ func (h *Harness) do(ctx context.Context, st Step) (string, error) {
 		h.Clock.Advance(d)
 		h.App.Tick(ctx)
 		return fmt.Sprintf("时间过去 %s → %s", st.Advance, h.Clock.Now().Format("01-02 15:04 Mon")), nil
+	case st.Run != "":
+		return h.run(ctx, st.Run)
 	case st.Deliver != "":
 		var id AssignmentID
 		h.App.Store.Read(func(s *app.State) {
@@ -127,7 +129,7 @@ func (h *Harness) do(ctx context.Context, st Step) (string, error) {
 		}
 		return fmt.Sprintf("%s 交付 %s：%s", st.Deliver, id, st.Result), nil
 	}
-	return "", fmt.Errorf("a step needs say, advance or deliver")
+	return "", fmt.Errorf("a step needs say, advance, run or deliver")
 }
 
 // statuses snapshots item and assignment statuses (for "unchanged").
@@ -228,6 +230,10 @@ func (h *Harness) check(ck Check, msgs []Msg, calls []ToolCall, before map[strin
 		})
 		if !found {
 			return fmt.Sprintf("item %s: none found; have:\n%s%s", desc(ck), h.stateText(), why)
+		}
+	case "outcome":
+		if msg := h.checkOutcome(ck, msgs); msg != "" {
+			return msg + why
 		}
 	case "plan", "no_plan":
 		if msg := h.checkPlan(ck); msg != "" {

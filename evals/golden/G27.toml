@@ -1,0 +1,31 @@
+id = "G27"
+title = "收纳（变体）：工作和生活混在一起的一堆事"
+critical = false
+capabilities = ["triage"]
+milestone = "triage"
+now = "2026-10-12 10:00"
+
+[[agents]]
+id = "assistant"
+description = "通用助理 agent：查资料、整理文档、写草稿"
+capabilities = ["web:read", "docs:write"]
+
+[[steps]]
+say = """帮我捋一下：
+1. 周三之前要把季度复盘报告交给老板
+2. 孩子学校周五开家长会
+3. 想学 Rust，但还没想好怎么学
+4. 公司要不要换个大点的办公室，我拿不定主意
+5. 上个月的出差报销单还没交
+6. 之前说的那个 newsletter 不做了"""
+timeout = "6m"
+  [[steps.expect]]
+  type = "tool"
+  called = ["triage"]
+  why = "一堆事先分类"
+  [[steps.expect]]
+  type = "judge"
+  to = "principal"
+  question = "这条回复是否把这些事按处理方式分了类（比如交出去办的、要委托人自己做或拍板的、需要慢慢探索的、记下或不用管的），并且对“要不要换办公室”只是帮他理清选项而不是替他决定？"
+  at_least = 0.6
+  why = "分类之后按类处理"

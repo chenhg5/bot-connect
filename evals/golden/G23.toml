@@ -1,6 +1,7 @@
 id = "G23"
 title = "规划：明显做不到的目标——直接说不可行，给现实的替代"
 critical = true
+capabilities = ["judgment", "risk"]
 milestone = "planning"
 now = "2026-10-12 10:00"
 

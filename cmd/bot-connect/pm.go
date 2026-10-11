@@ -44,10 +44,10 @@ func (s auditSink) Publish(_ context.Context, evs []Event) {
 // setupPM builds a bot's project-management core: its own state file,
 // drivers for agent sessions and people, a waker into the hub, and the
 // workers / company setup from config.
-func setupPM(cfg *config.Config, bc config.BotConfig, h *hub.Hub, workers *worker.Manager, scope worker.Scope, sink audit.Sink, withConsole bool) (*app.App, *agentsession.Driver, error) {
+func setupPM(cfg *config.Config, bc config.BotConfig, h *hub.Hub, workers *worker.Manager, scope worker.Scope, sink audit.Sink, withConsole bool) (*app.App, *agentsession.Driver, *assemble.ClaimLog, error) {
 	store, err := jsonstore.Open(filepath.Join(bc.Dir, "state.json"))
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	a := app.New(store, RealClock{})
 	a.Log = slog.Default().With("bot", bc.Name)
@@ -62,11 +62,11 @@ func setupPM(cfg *config.Config, bc config.BotConfig, h *hub.Hub, workers *worke
 			return "", h.NotifyPrincipal(ctx, text)
 		}),
 	}})
-	assemble.WirePM(a, h, bc, cfg.Judge)
+	claims := assemble.WirePM(a, h, bc, cfg.Judge)
 
 	ctx := context.Background()
 	if err := a.EnsureOrg(ctx, firstNonEmpty(cfg.Org.Title, "公司")); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	setup := System("config")
 	principals := append([]string(nil), bc.Principals...)
@@ -76,14 +76,14 @@ func setupPM(cfg *config.Config, bc config.BotConfig, h *hub.Hub, workers *worke
 	if err := a.UpsertWorker(ctx, setup, workforce.Worker{ID: Principal, Name: firstNonEmpty(bc.PrincipalName, "principal"), Kind: workforce.Human,
 		Trust: workforce.External, Physical: true, Consent: workforce.Consent{Given: true}, Identities: principals,
 		Contact: []workforce.Route{{Kind: human.PrincipalChat, Address: "principal"}}}); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	for _, w := range cfg.Workers {
 		if scope.Names != nil && !scope.Names[w.Name] {
 			continue
 		}
 		if err := a.UpsertWorker(ctx, setup, AgentWorker(w)); err != nil {
-			return nil, nil, fmt.Errorf("worker %s: %w", w.Name, err)
+			return nil, nil, nil, fmt.Errorf("worker %s: %w", w.Name, err)
 		}
 	}
 	for _, p := range cfg.People {
@@ -92,10 +92,10 @@ func setupPM(cfg *config.Config, bc config.BotConfig, h *hub.Hub, workers *worke
 		}
 		pw, err := PersonWorker(p)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		if err := a.UpsertWorker(ctx, setup, pw); err != nil {
-			return nil, nil, fmt.Errorf("person %s: %w", p.ID, err)
+			return nil, nil, nil, fmt.Errorf("person %s: %w", p.ID, err)
 		}
 	}
 	if len(cfg.Org.Policies)+len(cfg.Org.Roles) > 0 {
@@ -121,10 +121,10 @@ func setupPM(cfg *config.Config, bc config.BotConfig, h *hub.Hub, workers *worke
 			return append(evs, NewEvent("org.synced", "project:org", now, setup)), nil
 		})
 		if err != nil {
-			return nil, nil, fmt.Errorf("org: %w", err)
+			return nil, nil, nil, fmt.Errorf("org: %w", err)
 		}
 	}
-	return a, agents, nil
+	return a, agents, claims, nil
 }
 
 // AgentWorker turns a configured agent session into a worker profile.

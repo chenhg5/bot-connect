@@ -1,0 +1,21 @@
+id = "G32"
+title = "不过度规划：一件明确的小事直接交出去"
+critical = true
+capabilities = ["triage", "delegation"]
+now = "2026-10-12 10:00"
+
+[[agents]]
+id = "dev"
+description = "开发 agent：可以改官网仓库"
+capabilities = ["repo:website:write"]
+
+[[steps]]
+say = "把官网 footer 的备案号改成 京ICP备20261012号"
+timeout = "4m"
+  [[steps.expect]]
+  type = "assignment"
+  worker = "dev"
+  why = "整件交给 agent"
+  [[steps.expect]]
+  type = "no_plan"
+  why = "一件小事不需要计划"

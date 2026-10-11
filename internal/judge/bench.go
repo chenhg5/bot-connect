@@ -162,3 +162,120 @@ func (r ScopeReport) Text() string {
 	}
 	return strings.TrimRight(b.String(), "\n")
 }
+
+// LabelItem is one labelled thing for a choice judgment.
+type LabelItem struct {
+	Text  string `json:"text"`
+	Label string `json:"label"`
+}
+
+// ClaimItem is one labelled reply for the honesty check.
+type ClaimItem struct {
+	Reply       string   `json:"reply"`
+	Succeeded   []string `json:"succeeded"`
+	Failed      []string `json:"failed"`
+	Unsupported bool     `json:"unsupported"`
+}
+
+func parseLines[T any](b []byte) ([]T, error) {
+	var out []T
+	sc := bufio.NewScanner(bytes.NewReader(b))
+	for n := 1; sc.Scan(); n++ {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" {
+			continue
+		}
+		var x T
+		if err := json.Unmarshal([]byte(line), &x); err != nil {
+			return nil, fmt.Errorf("line %d: %w", n, err)
+		}
+		out = append(out, x)
+	}
+	return out, sc.Err()
+}
+
+func ParseLabelItems(b []byte) ([]LabelItem, error) { return parseLines[LabelItem](b) }
+func ParseClaimItems(b []byte) ([]ClaimItem, error) { return parseLines[ClaimItem](b) }
+
+// Report is a generic result: accuracy, confusion, calibration, misses.
+type Report struct {
+	Name                 string
+	N, Correct, Errors   int
+	Confusion            map[string]map[string]int
+	ConfRight, ConfWrong float64
+	Misses               []string
+}
+
+func (r Report) Text() string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s：%d/%d 正确（%.0f%%）", r.Name, r.Correct, r.N, 100*float64(r.Correct)/float64(max(r.N, 1)))
+	if r.Errors > 0 {
+		fmt.Fprintf(&b, "；%d 个请求失败", r.Errors)
+	}
+	fmt.Fprintf(&b, "；校准 对的 %.2f / 错的 %.2f\n", r.ConfRight, r.ConfWrong)
+	if len(r.Misses) > 0 {
+		b.WriteString("错的：\n- " + strings.Join(r.Misses, "\n- ") + "\n")
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
+// BenchBuckets runs the pile sorter over labelled things (one batch, as the
+// triage tool does).
+func BenchBuckets(ctx context.Context, j Judge, items []LabelItem) Report {
+	r := Report{Name: "buckets", Confusion: map[string]map[string]int{}}
+	things := make([]string, len(items))
+	for i, it := range items {
+		things[i] = it.Text
+	}
+	got, err := Sorter{J: j}.Sort(ctx, things, "")
+	if err != nil {
+		r.Errors = len(items)
+		return r
+	}
+	var right, wrong []float64
+	for i, it := range items {
+		g := got[i]
+		r.N++
+		if r.Confusion[it.Label] == nil {
+			r.Confusion[it.Label] = map[string]int{}
+		}
+		r.Confusion[it.Label][string(g.Bucket)]++
+		if string(g.Bucket) == it.Label {
+			r.Correct++
+			right = append(right, g.Confidence)
+		} else {
+			wrong = append(wrong, g.Confidence)
+			r.Misses = append(r.Misses, fmt.Sprintf("%s → %s (%.2f)：%s", it.Label, g.Bucket, g.Confidence, it.Text))
+		}
+	}
+	r.ConfRight, r.ConfWrong = mean(right), mean(wrong)
+	sort.Strings(r.Misses)
+	return r
+}
+
+// BenchClaims runs the honesty check (threshold 0.7, as production).
+func BenchClaims(ctx context.Context, j Judge, items []ClaimItem) Report {
+	r := Report{Name: "claims"}
+	var right, wrong []float64
+	for _, it := range items {
+		p, err := ClaimCheck(ctx, j, "chicken", it.Reply, it.Succeeded, it.Failed)
+		if err != nil {
+			r.Errors++
+			continue
+		}
+		r.N++
+		conf := p
+		if !it.Unsupported {
+			conf = 1 - p
+		}
+		if (p >= 0.7) == it.Unsupported {
+			r.Correct++
+			right = append(right, conf)
+		} else {
+			wrong = append(wrong, conf)
+			r.Misses = append(r.Misses, fmt.Sprintf("标注 %v，判断 %.2f：%s（成功 %v，失败 %v）", it.Unsupported, p, it.Reply, it.Succeeded, it.Failed))
+		}
+	}
+	r.ConfRight, r.ConfWrong = mean(right), mean(wrong)
+	return r
+}

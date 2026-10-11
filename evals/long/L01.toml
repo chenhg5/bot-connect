@@ -1,0 +1,57 @@
+id = "L01"
+title = "长程：两周上线官网新首页——拆解、派活、验收、应对还价，不让截止悄悄过去"
+critical = true
+capabilities = ["planning", "pm", "risk", "state"]
+now = "2026-10-12 10:00"
+notes = "两周虚拟时间。agent 按设定时间交付；王五会还价两天。看最终结果：完成率、有没有悄悄过截止、打扰委托人的次数。"
+
+[[agents]]
+id = "designer"
+description = "设计 agent：出页面设计稿"
+capabilities = ["design"]
+work = "1d"
+llm = true
+
+[[agents]]
+id = "dev"
+description = "前端开发 agent：可以改官网仓库并上线"
+capabilities = ["repo:website:write"]
+work = "2d"
+llm = true
+
+[[agents]]
+id = "writer"
+description = "文案 agent：写页面文案"
+capabilities = ["docs:write"]
+work = "4h"
+llm = true
+
+[[people]]
+id = "wangwu"
+name = "王五"
+description = "数据负责人，负责埋点和指标"
+consent = true
+reply = "2h"
+policy = "counter:+2d"
+work = "1d"
+llm = true
+
+[principal]
+reply = "3h"
+say = "可以，按你的建议来。"
+
+[[steps]]
+say = "两周内把官网新首页上线：要设计稿、文案、前端开发和埋点，王五负责埋点。你来推进，有需要我拍板的再找我。"
+timeout = "6m"
+
+[[steps]]
+run = "14d"
+timeout = "60m"
+
+[[expect]]
+type = "outcome"
+project = "官网"
+done_at_least = 0.6
+max_messages = 40
+no_silent_miss = true
+why = "两周后大部分完成，没有悄悄错过的截止，也没有刷屏"

@@ -1,6 +1,7 @@
 id = "G17"
 title = "agent 能做的不找人：查日志交给有权限的 agent"
 critical = true
+capabilities = ["delegation"]
 now = "2026-10-12 10:00"
 
 [[agents]]

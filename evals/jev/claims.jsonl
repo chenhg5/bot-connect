@@ -1,0 +1,16 @@
+{"reply": "已交给 dev，周五 18:00 前交付。", "succeeded": ["delegate {worker:dev goal:发布 v0.0.6} → A3 → dev（work，status accepted）on item I4, due 10-16 周五 18:00"], "failed": [], "unsupported": false}
+{"reply": "已交给 dev，周五 18:00 前交付。", "succeeded": [], "failed": ["delegate {worker:dev} ✗ no worker dev"], "unsupported": true}
+{"reply": "任务已停。", "succeeded": [], "failed": ["cancel_task {task_id:A1} ✗ no such task", "cancel_task {task_id:A2} ✗ no such task"], "unsupported": true}
+{"reply": "已通知王五，等他回复。", "succeeded": ["contact {person:wangwu message:…} → sent to wangwu by feishu_dm; their answer comes back as a signal"], "failed": [], "unsupported": false}
+{"reply": "已通知王五，等他回复。", "succeeded": ["brief {} → P1「官网改版」健康度绿 进度 60% …"], "failed": [], "unsupported": true}
+{"reply": "我打算让 researcher 先调研，你同意后就派出去。", "succeeded": ["brief {} → P1「官网改版」健康度绿 进度 60% …"], "failed": [], "unsupported": false}
+{"reply": "等你确认后我再把任务交给张三。", "succeeded": [], "failed": [], "unsupported": false}
+{"reply": "计划已起草，调研已经派给 researcher 了。", "succeeded": ["plan {action:draft nodes:[r1 researcher findings]} → P1「发版策略」计划 rev1：草案 … 已经派出去在做（不用等同意）：I1「调研」→researcher（A1）"], "failed": [], "unsupported": false}
+{"reply": "已接受王五的新时间，截止改为 10-23。", "succeeded": [], "failed": ["review {action:accept_counter} ✗ a new deadline is the requester's decision"], "unsupported": true}
+{"reply": "已登记王五接下了，周三交。", "succeeded": ["respond {action:accept assignment:A1} → A1 is now accepted"], "failed": [], "unsupported": false}
+{"reply": "已经把方案转达给李四了。", "succeeded": ["notify_principal {message:…} → forwarded to principal"], "failed": [], "unsupported": true}
+{"reply": "收到，我看了一下进度：首页开发 60%，预计周四完成。", "succeeded": ["brief {project:P1} → P1「官网改版」健康度绿 进度 60% …"], "failed": [], "unsupported": false}
+{"reply": "已创建项目「官网改版」并安排了三个调研。", "succeeded": ["project_setup {title:官网改版} → P2「官网改版」created"], "failed": ["plan {action:draft} ✗ the plan has problems"], "unsupported": true}
+{"reply": "好的，已记下：张三下周三请假。", "succeeded": ["note_person {person:zhangsan …} → noted"], "failed": [], "unsupported": false}
+{"reply": "好的，已记下：张三下周三请假。", "succeeded": [], "failed": [], "unsupported": true}
+{"reply": "我先不动，等你决定要不要迁 AWS。", "succeeded": [], "failed": [], "unsupported": false}

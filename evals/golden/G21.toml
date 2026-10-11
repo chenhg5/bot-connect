@@ -1,6 +1,7 @@
 id = "G21"
 title = "规划：一年赚 100 万（谨慎）——先问约束，调研可行性，不轻易承诺"
 critical = true
+capabilities = ["planning", "judgment"]
 milestone = "planning"
 now = "2026-10-12 10:00"
 notes = "目标不是任务：先澄清约束，调研派 agent，可行性有依据再下结论；谨慎的委托人要先验证再投入。"

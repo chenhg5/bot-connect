@@ -1,6 +1,7 @@
 id = "G7"
 title = "验收：交付缺了完成标准的一项就返工"
 critical = true
+capabilities = ["pm", "state"]
 now = "2026-10-12 10:00"
 
 [[agents]]

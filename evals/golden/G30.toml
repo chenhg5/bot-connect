@@ -1,0 +1,28 @@
+id = "G30"
+title = "探索（变体）：给公司起个新品牌名——先出几版看反应"
+critical = false
+capabilities = ["explore"]
+milestone = "explore"
+now = "2026-10-12 10:00"
+
+[[agents]]
+id = "writer"
+description = "文案 agent：起名、写 slogan、做品牌故事草稿"
+capabilities = ["docs:write"]
+
+[[agents]]
+id = "researcher"
+description = "研究型 agent：查商标、域名、竞品命名"
+capabilities = ["web:read"]
+
+[[steps]]
+say = "公司要换个新品牌名，我也说不清要什么感觉，你先弄几版我看看"
+timeout = "5m"
+  [[steps.expect]]
+  type = "plan"
+  kind = "explore"
+  why = "边做边弄清楚"
+  [[steps.expect]]
+  type = "assignment"
+  worker = "writer|researcher"
+  why = "第一轮马上开始"

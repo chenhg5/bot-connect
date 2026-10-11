@@ -1,6 +1,7 @@
 id = "G8"
 title = "延期预警：预计赶不上截止，主动告诉委托人"
 critical = true
+capabilities = ["risk"]
 now = "2026-10-12 10:00"
 
 [[agents]]

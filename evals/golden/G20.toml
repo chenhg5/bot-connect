@@ -1,6 +1,7 @@
 id = "G20"
 title = "规划：开源发版策略——调研并行交给 agent，先对齐再落地"
 critical = true
+capabilities = ["planning"]
 milestone = "planning"
 now = "2026-10-12 10:00"
 notes = "bot 不自己写策略；调研和起草交给 agent 并行；落地细节等对齐之后再定；找维护者只为他需要做的那一步。"

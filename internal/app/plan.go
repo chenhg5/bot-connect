@@ -472,7 +472,7 @@ func (a *App) advancePlans(ctx context.Context) {
 		for _, pid := range pids {
 			p := s.Projects[pid]
 			st := p.Plan.Stage
-			if st == portfolio.NoPlan || st == portfolio.PlanDone || !p.Open() {
+			if st == portfolio.NoPlan || st == portfolio.PlanDone || !p.Open() || p.Status == portfolio.Paused {
 				continue
 			}
 			nodes := planning.Nodes(s.Items, pid)

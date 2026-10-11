@@ -1,0 +1,33 @@
+id = "G28"
+title = "规划（变体）：办一场开发者沙龙——并行、人只做需要人的一步"
+critical = false
+capabilities = ["planning"]
+milestone = "planning"
+now = "2026-10-12 10:00"
+
+[[agents]]
+id = "assistant"
+description = "通用助理 agent：查场地、写文案、做报名表、整理嘉宾资料"
+capabilities = ["web:read", "docs:write"]
+
+[[people]]
+id = "lisi"
+name = "李四"
+description = "市场负责人，有场地和嘉宾资源，负责对外联系"
+consent = true
+
+[[steps]]
+say = "下个月中旬办一场 50 人的开发者线下沙龙，主题是 AI agent，李四负责市场。"
+timeout = "5m"
+  [[steps.expect]]
+  type = "plan"
+  min = 3
+  parallel = true
+  agents_first = true
+  why = "多方配合的事要规划：查场地、文案、报名可以并行交给 agent，联系嘉宾这类关系型的事才找李四"
+  [[steps.expect]]
+  type = "no_assignment"
+  worker = "lisi"
+  kind = "work"
+  title = "文案"
+  why = "写文案不该找人"

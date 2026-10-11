@@ -1,0 +1,69 @@
+id = "G31"
+title = "状态（变体）：问“那几件事怎么样了”——不漏掉逾期的和待验收的"
+critical = true
+capabilities = ["state"]
+now = "2026-10-15 10:00"
+
+[[agents]]
+id = "dev"
+description = "开发 agent"
+capabilities = ["repo:website:write"]
+
+[[people]]
+id = "wangwu"
+name = "王五"
+consent = true
+
+[[projects]]
+id = "P1"
+title = "十月官网改版"
+priority = "P1"
+
+[[items]]
+ref = "a"
+project = "P1"
+title = "首页文案定稿"
+status = "done"
+
+[[items]]
+ref = "b"
+project = "P1"
+title = "埋点方案"
+due = "2026-10-14 18:00"
+
+[[items]]
+ref = "c"
+project = "P1"
+title = "首页开发"
+due = "2026-10-20 18:00"
+
+[[assignments]]
+item = "b"
+worker = "wangwu"
+why = "knowledge"
+goal = "定首页埋点方案"
+status = "accepted"
+
+[[assignments]]
+item = "c"
+worker = "dev"
+goal = "开发新首页"
+status = "delivered"
+result = "首页开发完成，PR #31"
+
+[[steps]]
+say = "官网那几件事现在都怎么样了？"
+timeout = "4m"
+  [[steps.expect]]
+  type = "reply"
+  to = "principal"
+  contains_any = ["逾期", "过期", "超期", "过了截止", "延期", "晚了", "没按时"]
+  why = "逾期的埋点方案必须说出来"
+  [[steps.expect]]
+  type = "reply"
+  to = "principal"
+  contains_any = ["验收", "待确认", "交付", "PR"]
+  why = "已交付待验收的要说出来"
+  [[steps.expect]]
+  type = "unchanged"
+  why = "问进度不应改动任何状态"

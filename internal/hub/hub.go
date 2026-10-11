@@ -140,6 +140,8 @@ type Options struct {
 	// TurnDone is told when a main-session turn ends: the signals it was
 	// woken for and whether it answered.
 	TurnDone func(signalIDs []string, answered bool)
+	// TurnStart is told when a brain turn begins in a conversation.
+	TurnStart func(conv string)
 	// Egress checks a message before it goes to a conversation; it returns
 	// the text to send instead and whether to send at all.
 	Egress func(ctx context.Context, c *Conversation, text string) (string, bool)
@@ -397,6 +399,9 @@ func (h *Hub) SendTo(ctx context.Context, convKey, text string) error {
 	h.opts.Audit.Record(audit.Event{Type: audit.Outbound, Platform: c.Platform, Conv: convKey, Text: audit.Clip(text, 2000), Error: errString(err)})
 	return err
 }
+
+// SetTurnStart installs the turn-start hook.
+func (h *Hub) SetTurnStart(f func(conv string)) { h.opts.TurnStart = f }
 
 // SetEgress installs the outbound check.
 func (h *Hub) SetEgress(f func(ctx context.Context, c *Conversation, text string) (string, bool)) {
@@ -668,6 +673,9 @@ func (h *Hub) runTurn(ctx context.Context, l *lane) {
 
 	turn := Turn{Conv: conv, Items: items, Caller: leastPrivileged(items)}
 	waited := time.Since(items[0].At).Round(time.Millisecond)
+	if h.opts.TurnStart != nil {
+		h.opts.TurnStart(conv.Key)
+	}
 	slog.Info("turn start", "conv", conv.Key, "items", len(items), "caller", turn.Caller.Display(), "role", turn.Caller.Role, "waited", waited)
 	caller := turn.Caller
 	h.opts.Audit.Record(audit.Event{Type: audit.TurnStart, Platform: conv.Platform, Conv: conv.Key, User: &caller,

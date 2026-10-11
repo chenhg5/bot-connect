@@ -267,7 +267,7 @@ func (t DefaultTiering) Tier(scored []Scored) Agenda {
 func committed(w *world.World) *world.World {
 	hide := false
 	for _, p := range w.Projects {
-		hide = hide || !p.Plan.Stage.Committed() || p.Plan.Kind == portfolio.KindExplore
+		hide = hide || !p.Plan.Stage.Committed() || p.Plan.Kind == portfolio.KindExplore || p.Status == portfolio.Paused
 	}
 	if !hide {
 		return w
@@ -279,8 +279,8 @@ func committed(w *world.World) *world.World {
 		if ok && !p.Plan.Stage.Committed() && it.Assignment == "" {
 			continue
 		}
-		if ok && p.Plan.Kind == portfolio.KindExplore {
-			it.Due = nil // exploring has a timebox, not deadlines: redoing is progress, not delay
+		if ok && (p.Plan.Kind == portfolio.KindExplore || p.Status == portfolio.Paused) {
+			it.Due = nil // exploring has a timebox, a paused project waits on purpose: no deadline risks
 		}
 		c.Items[id] = it
 	}

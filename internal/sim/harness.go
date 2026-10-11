@@ -41,7 +41,8 @@ func dmOf(person string) string   { return "dm-" + person }
 type Msg struct {
 	Chat string // "dm-principal", "dm-wangwu", "user:u-wangwu", a group id
 	Text string
-	At   time.Time
+	At   time.Time // real time
+	VAt  time.Time // virtual time
 }
 
 // ToolCall is a tool the brain used.
@@ -56,10 +57,18 @@ type ToolCall struct {
 // platform is the simulated chat platform: it records what the bot sends
 // and lets the harness inject messages.
 type platform struct {
-	mu   sync.Mutex
-	on   func(hub.Inbound)
-	msgs []Msg
-	seq  int
+	mu    sync.Mutex
+	on    func(hub.Inbound)
+	msgs  []Msg
+	seq   int
+	clock *FakeClock
+}
+
+func (p *platform) vnow() time.Time {
+	if p.clock == nil {
+		return time.Time{}
+	}
+	return p.clock.Now()
 }
 
 func (p *platform) Name() string { return platformName }
@@ -71,13 +80,13 @@ func (p *platform) Ack(context.Context, string) {}
 func (p *platform) Send(_ context.Context, chat, text string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.msgs = append(p.msgs, Msg{Chat: chat, Text: text, At: time.Now()})
+	p.msgs = append(p.msgs, Msg{Chat: chat, Text: text, At: time.Now(), VAt: p.vnow()})
 	return nil
 }
 func (p *platform) SendUser(_ context.Context, user, text string) (string, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.msgs = append(p.msgs, Msg{Chat: "user:" + user, Text: text, At: time.Now()})
+	p.msgs = append(p.msgs, Msg{Chat: "user:" + user, Text: text, At: time.Now(), VAt: p.vnow()})
 	return fmt.Sprintf("m%d", len(p.msgs)), nil
 }
 
@@ -127,17 +136,19 @@ func (f *fakeAgent) Notify(context.Context, workforce.Worker, delegation.Assignm
 
 // Harness is one simulated bot.
 type Harness struct {
-	Case  Case
-	Clock *FakeClock
-	App   *app.App
-	Hub   *hub.Hub
-	plat  *platform
-	rec   *recorder
-	srv   *toolserver.Server
-	items map[string]ItemID // case refs → ids
-	judge judge.Judge
-	dir   string
-	stop  context.CancelFunc
+	lastSeen      int // messages + tool calls seen by settle
+	principalSeen int // messages the scripted principal has reacted to
+	Case          Case
+	Clock         *FakeClock
+	App           *app.App
+	Hub           *hub.Hub
+	plat          *platform
+	rec           *recorder
+	srv           *toolserver.Server
+	items         map[string]ItemID // case refs → ids
+	judge         judge.Judge
+	dir           string
+	stop          context.CancelFunc
 }
 
 // New builds a bot from the config's brain (and providers) around a fresh
@@ -152,6 +163,7 @@ func New(ctx context.Context, cfg *config.Config, c Case) (*Harness, error) {
 		return nil, err
 	}
 	h := &Harness{Case: c, Clock: NewFakeClock(*start), plat: &platform{}, rec: &recorder{}, items: map[string]ItemID{}, dir: dir}
+	h.plat.clock = h.Clock
 	bc := cfg.Bots[0]
 	bc.Name, bc.PrincipalName, bc.Dir = "eval bot", "chicken", dir
 	bc.Brain.WorkDir = dir + "/brain"
@@ -176,12 +188,12 @@ func New(ctx context.Context, cfg *config.Config, c Case) (*Harness, error) {
 		}),
 	}})
 	bc.Style = config.Style{Risk: c.Style.Risk, AskBefore: c.Style.AskBefore, BudgetMonth: c.Style.BudgetMonth, Parallel: c.Style.Parallel}
-	assemble.WirePM(h.App, h.Hub, bc, cfg.Judge)
+	claims := assemble.WirePM(h.App, h.Hub, bc, cfg.Judge)
 	h.judge = assemble.NewJudge(cfg.Judge)
 
 	reg := tools.New(tools.Env{Bot: bc.Name, Workers: wm, Messenger: h.Hub, Scope: worker.Scope{Bot: bc.Name}, App: h.App})
 	h.srv = toolserver.New(reg)
-	h.srv.Audit = h.rec
+	h.srv.Audit = audit.Multi{h.rec, claims}
 	if err := h.srv.Start("127.0.0.1:0"); err != nil {
 		return nil, err
 	}

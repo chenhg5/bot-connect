@@ -230,13 +230,13 @@ func setupBot(cfg *config.Config, bc config.BotConfig, workers *worker.Manager, 
 		ScheduleDone:  jobs.Done,
 	}, workers)
 
-	pm, agents, err := setupPM(cfg, bc, h, workers, scope, sink, withConsole)
+	pm, agents, claims, err := setupPM(cfg, bc, h, workers, scope, sink, withConsole)
 	if err != nil {
 		return nil, fmt.Errorf("projects: %w", err)
 	}
 	reg := tools.New(tools.Env{Bot: bc.Name, Workers: workers, Sessions: sessions, Messenger: h, Scope: scope, Schedules: jobs, App: pm})
 	srv := toolserver.New(reg)
-	srv.Audit = sink
+	srv.Audit = audit.Multi{sink, claims}
 	if err := srv.Start(cfg.Server.Listen); err != nil {
 		return nil, fmt.Errorf("tool server: %w", err)
 	}

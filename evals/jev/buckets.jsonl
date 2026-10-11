@@ -1,0 +1,29 @@
+{"text": "线上支付偶尔报 500，查一下原因", "label": "handoff"}
+{"text": "把官网 footer 的备案号改成新的", "label": "handoff"}
+{"text": "给新同事开通 GitHub 和飞书权限", "label": "handoff"}
+{"text": "把上周的会议纪要整理出来发群里", "label": "handoff"}
+{"text": "帮我把这篇英文博客翻译成中文", "label": "handoff"}
+{"text": "官网首页要改版，下个月上线", "label": "program"}
+{"text": "搭一套新人入职流程", "label": "program"}
+{"text": "把客服接入 AI 自动回复，先试点再全量", "label": "program"}
+{"text": "组织下个月的用户大会", "label": "program"}
+{"text": "这个季度把付费转化率提到 5%", "label": "goal"}
+{"text": "年底前把服务器成本降 30%", "label": "goal"}
+{"text": "明年 GitHub star 过 5 万", "label": "goal"}
+{"text": "想做一个给销售用的 AI 助手，还没想清楚做成啥样", "label": "explore"}
+{"text": "新品牌的 slogan 还没感觉，试几个方向", "label": "explore"}
+{"text": "想搞个播客，主题和形式都没定", "label": "explore"}
+{"text": "要不要从阿里云迁到 AWS，我还没想好", "label": "decision"}
+{"text": "前端框架要不要从 Vue 换成 React", "label": "decision"}
+{"text": "下季度招两个后端还是一个后端一个产品", "label": "decision"}
+{"text": "这次融资要不要接受 A 机构的条款", "label": "decision"}
+{"text": "上周那个报错后来查到原因了吗", "label": "question"}
+{"text": "我们现在一个月云服务花多少钱", "label": "question"}
+{"text": "官网改版现在进展怎么样", "label": "question"}
+{"text": "张三下周三请假", "label": "info"}
+{"text": "李四从下个月起转去做数据组", "label": "info"}
+{"text": "我们的发票抬头换成新公司名了", "label": "info"}
+{"text": "下周五全公司团建，不上班", "label": "info"}
+{"text": "上周说的那个 README 已经有人写了，不用管了", "label": "drop"}
+{"text": "之前要做的旧版迁移脚本，新版上线后已经不需要了", "label": "drop"}
+{"text": "那个 demo 的事算了，客户已经不要了", "label": "drop"}

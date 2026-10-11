@@ -19,10 +19,14 @@ import (
 )
 
 func evalCmd() *cli.Command {
-	casesFlag := cli.Flag{Name: "cases", Type: cli.String, Desc: "directory of *.toml cases (default: the built-in golden set)"}
+	casesFlag := cli.Flag{Name: "cases", Type: cli.String, Desc: "directory of *.toml cases (default: the built-in suite)"}
+	suiteFlag := cli.Flag{Name: "suite", Type: cli.String, Default: "golden", Desc: "built-in suite: golden (decision points) | long (weeks of virtual time)"}
 	load := func(c *cli.Ctx) ([]sim.Case, error) {
 		if d := c.Str("cases"); d != "" {
 			return sim.LoadDir(d)
+		}
+		if c.Str("suite") == "long" {
+			return sim.LoadFS(evals.Long, "long")
 		}
 		return sim.LoadFS(evals.Golden, "golden")
 	}
@@ -33,7 +37,7 @@ func evalCmd() *cli.Command {
 			{
 				Name: "list", Summary: "the cases",
 				Examples: []string{"bot-connect eval list"},
-				Flags:    []cli.Flag{casesFlag},
+				Flags:    []cli.Flag{casesFlag, suiteFlag},
 				Run: func(c *cli.Ctx) error {
 					cases, err := load(c)
 					if err != nil {
@@ -62,7 +66,8 @@ func evalCmd() *cli.Command {
 				Name: "jev", Summary: "benchmark the L1 judgments (Jev) on labelled data",
 				Examples: []string{"bot-connect eval jev", "bot-connect eval jev --data ./my-scope.jsonl"},
 				Flags: []cli.Flag{configFlag,
-					{Name: "data", Type: cli.String, Desc: "scope dataset (default: the built-in evals/jev/scope.jsonl)"},
+					{Name: "set", Type: cli.String, Default: "all", Desc: "scope | buckets | claims | all"},
+					{Name: "data", Type: cli.String, Desc: "a dataset file instead of the built-in one (with one --set)"},
 				},
 				Run: func(c *cli.Ctx) error {
 					cfg, _, err := loadConfig(c)
@@ -73,29 +78,60 @@ func evalCmd() *cli.Command {
 					if _, live := j.(*judge.Jev); !live {
 						return fmt.Errorf("no judge configured: set [judge] api_key (or TYPESAFE_API_KEY)")
 					}
-					var raw []byte
-					if p := c.Str("data"); p != "" {
-						raw, err = os.ReadFile(p)
-					} else {
-						raw, err = evals.Jev.ReadFile("jev/scope.jsonl")
+					read := func(name string) ([]byte, error) {
+						if p := c.Str("data"); p != "" {
+							return os.ReadFile(p)
+						}
+						return evals.Jev.ReadFile("jev/" + name + ".jsonl")
 					}
-					if err != nil {
-						return err
-					}
-					items, err := judge.ParseScopeItems(raw)
-					if err != nil {
-						return err
-					}
-					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+					ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 					defer cancel()
-					r := judge.BenchScope(ctx, j, items)
-					return c.Out(r, func(w io.Writer) { fmt.Fprintln(w, r.Text()) })
+					set := c.Str("set")
+					var texts []string
+					reports := map[string]any{}
+					if set == "all" || set == "scope" {
+						raw, err := read("scope")
+						if err != nil {
+							return err
+						}
+						items, err := judge.ParseScopeItems(raw)
+						if err != nil {
+							return err
+						}
+						r := judge.BenchScope(ctx, j, items)
+						reports["scope"], texts = r, append(texts, r.Text())
+					}
+					if set == "all" || set == "buckets" {
+						raw, err := read("buckets")
+						if err != nil {
+							return err
+						}
+						items, err := judge.ParseLabelItems(raw)
+						if err != nil {
+							return err
+						}
+						r := judge.BenchBuckets(ctx, j, items)
+						reports["buckets"], texts = r, append(texts, r.Text())
+					}
+					if set == "all" || set == "claims" {
+						raw, err := read("claims")
+						if err != nil {
+							return err
+						}
+						items, err := judge.ParseClaimItems(raw)
+						if err != nil {
+							return err
+						}
+						r := judge.BenchClaims(ctx, j, items)
+						reports["claims"], texts = r, append(texts, r.Text())
+					}
+					return c.Out(reports, func(w io.Writer) { fmt.Fprintln(w, strings.Join(texts, "\n\n")) })
 				},
 			},
 			{
 				Name: "run", Summary: "run cases against the configured brain",
 				Examples: []string{"bot-connect eval run", "bot-connect eval run --case G3,G6", "bot-connect eval run --critical --out ./eval-out"},
-				Flags: []cli.Flag{configFlag, casesFlag,
+				Flags: []cli.Flag{configFlag, casesFlag, suiteFlag,
 					{Name: "case", Type: cli.List, Desc: "only these case ids"},
 					{Name: "critical", Type: cli.Bool, Desc: "only critical (★) cases"},
 					{Name: "out", Type: cli.String, Default: "eval-out", Desc: "where transcripts go"},

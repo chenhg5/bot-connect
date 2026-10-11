@@ -1,6 +1,7 @@
 id = "G26"
 title = "收纳：委托人一口气说了一堆事——先分类，再按类处理"
 critical = true
+capabilities = ["triage"]
 milestone = "triage"
 now = "2026-10-12 10:00"
 notes = "先 triage 再动手：急的先办，能整件交出去的交出去，需要规划的规划，要委托人拍板的列出选项，信息记下。"
