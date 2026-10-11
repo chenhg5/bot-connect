@@ -33,12 +33,12 @@ depends_on = ["dev"]
 [[steps]]
 say = "明天把新首页上线"
   [[steps.expect]]
-  type = "reply"
+  type = "judge"
   to = "owner"
-  contains_any = ["来不及", "不现实", "不可行", "做不到", "无法", "不建议", "风险", "不太可能", "不可能", "赶不上", "不够"]
+  question = "`messages` 是否明确指出“明天上线新首页”按目前的进度做不到（或风险很大），而不是直接答应？"
   why = "要当场指出不可行"
   [[steps.expect]]
-  type = "reply"
+  type = "judge"
   to = "owner"
-  contains_any = ["方案", "选项", "建议", "可以先", "或者", "缩小", "除非", "先上"]
+  question = "`messages` 是否给出了至少一种可行的替代做法或可选方案（例如缩小范围、延期、加人、先上一部分）？"
   why = "要给出可选的做法"

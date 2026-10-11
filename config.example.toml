@@ -218,3 +218,15 @@ idle_ttl = "24h"              # retire automatically after this long idle ("0s" 
 # [bots.feishu]
 # app_id = "cli_…"
 # app_secret = "…"
+
+# L1 judgment layer (TypeSafe Jev): classifies incoming messages, checks
+# replies to colleagues for leaks, and matches people to needs by meaning.
+# Without a key everything falls back to rules.
+[judge]
+# api_key = ""                    # or set TYPESAFE_API_KEY
+# api_key_env = "TYPESAFE_API_KEY"
+# model = "jev-latest"
+# leak_threshold = 0.6
+# triage = true
+# guard = true
+# staffing = true

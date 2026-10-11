@@ -276,7 +276,7 @@ func New(env Env) *Registry {
 		Name:        "list_workers",
 		Description: "The agent-session pool only (Claude Code / Codex sessions and templates) with live status. People and every other kind of worker are in the brief's roster; to decide who should do something use find_people.",
 		Handler: func(ctx context.Context, tc TurnContext, a map[string]any) (string, error) {
-			return workers.Overview(env.scope(tc)), nil
+			return workers.Overview(env.scope(tc)) + "\n(this is only the session pool. The workers you manage — agents and people in the roster — are found with find_people and given work with delegate; an agent there needs no session here, delegate starts one.)", nil
 		},
 	})
 	r.add(Tool{

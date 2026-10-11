@@ -62,7 +62,7 @@ func setupPM(cfg *config.Config, bc config.BotConfig, h *hub.Hub, workers *worke
 			return "", h.NotifyOwner(ctx, text)
 		}),
 	}})
-	assemble.WirePM(a, h, bc)
+	assemble.WirePM(a, h, bc, cfg.Judge)
 
 	ctx := context.Background()
 	if err := a.EnsureOrg(ctx, firstNonEmpty(cfg.Org.Title, "公司")); err != nil {

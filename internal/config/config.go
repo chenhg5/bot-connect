@@ -29,6 +29,9 @@ type Config struct {
 	People []Person `toml:"people"`
 	// The company: approval rules and standing roles (the root project).
 	Org Org `toml:"org"`
+	// Judge: the L1 judgment model (TypeSafe Jev) for triage, the outbound
+	// leak guard and semantic staffing. Without a key, rules are used.
+	Judge Judge `toml:"judge"`
 
 	Bots []BotConfig `toml:"bots"`
 
@@ -342,6 +345,34 @@ func (w Wake) Modes() map[string]string {
 	}
 	return out
 }
+
+// Judge configures the L1 judgment layer.
+type Judge struct {
+	Provider      string  `toml:"provider"` // "jev" (default when a key is set) | "none"
+	APIKey        string  `toml:"api_key"`
+	APIKeyEnv     string  `toml:"api_key_env"` // read the key from this env var (default TYPESAFE_API_KEY)
+	Model         string  `toml:"model"`       // default jev-latest
+	URL           string  `toml:"url"`
+	LeakThreshold float64 `toml:"leak_threshold"` // block outgoing messages at or above (default 0.6)
+	Triage        *bool   `toml:"triage"`         // classify incoming messages (default true)
+	Guard         *bool   `toml:"guard"`          // check messages to non-owners (default true)
+	Staffing      *bool   `toml:"staffing"`       // semantic matching in find_people (default true)
+}
+
+// Key returns the API key (direct, or from the environment).
+func (j Judge) Key() string {
+	if j.APIKey != "" {
+		return j.APIKey
+	}
+	env := j.APIKeyEnv
+	if env == "" {
+		env = "TYPESAFE_API_KEY"
+	}
+	return os.Getenv(env)
+}
+
+// On reports whether a feature is enabled (default on).
+func On(b *bool) bool { return b == nil || *b }
 
 // Org is the company-level setup.
 type Org struct {

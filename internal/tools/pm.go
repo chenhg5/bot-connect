@@ -142,6 +142,8 @@ func addPM(r *Registry, env Env) {
 				fmt.Fprintf(&b, "- %s（%s）分 %.1f：%s", c.Worker, kind, c.Score, strings.Join(c.Reasons, "；"))
 				if c.Excluded != "" {
 					b.WriteString(" ✗ " + c.Excluded)
+				} else if c.Agent {
+					b.WriteString("（delegate 即可：会话按需启动，不需要已有活跃会话）")
 				}
 				b.WriteString("\n")
 			}
@@ -268,7 +270,7 @@ func addPM(r *Registry, env Env) {
 			"ask (a question), deliver (result + evidence), answer (choice for an approval/decision/clarification/review), release (hand it back).",
 		Schema: obj(props{
 			"assignment": str("assignment id"),
-			"action":     enum("", "accept", "decline", "counter", "progress", "ask", "deliver", "answer", "release"),
+			"action":     enum("counter = a LATER due than asked; promising it by the due (or sooner) is accept with eta", "accept", "decline", "counter", "progress", "ask", "deliver", "answer", "release"),
 			"note":       str("reason / progress / question / remark"),
 			"eta":        str("expected finish (accept / progress)"),
 			"due":        str("counter: proposed deadline"),

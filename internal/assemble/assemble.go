@@ -15,12 +15,14 @@ import (
 	. "github.com/chenhg5/bot-connect/internal/domain/shared"
 	"github.com/chenhg5/bot-connect/internal/hub"
 	"github.com/chenhg5/bot-connect/internal/identity"
+	"github.com/chenhg5/bot-connect/internal/judge"
 )
 
 // WirePM connects a bot's PM core and hub: wake-ups go to the main session
 // (one audience per turn), messages come in as signals, the bot's wake
 // policy applies, and main-session turns report back.
-func WirePM(a *app.App, h *hub.Hub, bc config.BotConfig) {
+func WirePM(a *app.App, h *hub.Hub, bc config.BotConfig, jc config.Judge) {
+	wireJudge(a, h, bc, jc)
 	a.Waker = app.WakerFunc(func(ctx context.Context, w app.Wake) {
 		// One audience per wake-up: the owner side together (and the
 		// scaffold's own signals), each other person on their own, so a turn
@@ -105,4 +107,53 @@ func oneLine(s string, n int) string {
 		return string(r[:n]) + "…"
 	}
 	return s
+}
+
+// NewJudge builds the configured L1 judge (judge.None without a key).
+func NewJudge(jc config.Judge) judge.Judge {
+	if jc.Provider == "none" || jc.Key() == "" {
+		return judge.None{}
+	}
+	return &judge.Jev{Key: jc.Key(), Model: jc.Model, URL: jc.URL}
+}
+
+// wireJudge plugs the L1 judgment layer in: triage of incoming messages
+// (and landing what needs no decision), the outbound leak guard, and
+// semantic staffing. Without a judge the guard still catches exact project
+// titles.
+func wireJudge(a *app.App, h *hub.Hub, bc config.BotConfig, jc config.Judge) {
+	j := NewJudge(jc)
+	_, live := j.(*judge.Jev)
+	a.Say = func(ctx context.Context, conv, text string) error { return h.SendTo(ctx, conv, text) }
+	if live && config.On(jc.Triage) {
+		a.Triage = &judge.Triage{J: j, App: a}
+	}
+	if live && config.On(jc.Staffing) {
+		a.Staffing.Matchers = append(a.Staffing.Matchers, judge.Matcher{J: j})
+	}
+	if !config.On(jc.Guard) {
+		return
+	}
+	var guardJudge judge.Judge
+	if live {
+		guardJudge = j
+	}
+	g := &judge.Guard{J: guardJudge, App: a, Threshold: jc.LeakThreshold}
+	owner := firstNonEmpty(bc.OwnerName, "主人")
+	h.SetEgress(func(ctx context.Context, c *hub.Conversation, text string) (string, bool) {
+		if c.Key == h.MainKey() || h.IsOwnerConv(c) {
+			return text, true
+		}
+		gctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		v := g.Check(gctx, c.Peer, c.LastAsked, text)
+		cancel()
+		if !v.Block {
+			return text, true
+		}
+		slog.Warn("outbound guard held a message back", "conv", c.Key, "reason", v.Reason)
+		_, _, _ = a.Ingest(ctx, app.SignalSpec{Dedupe: fmt.Sprintf("guard:%s:%d", c.Key, time.Now().UnixNano()), Source: inbox.Internal,
+			Reason: "guard_blocked", Actor: System("guard"), Summary: "拦下了一条发给同事的消息：" + v.Reason,
+			Body: fmt.Sprintf("发往 %s 的消息被拦下（%s）。原文：\n%s\n对方问的是：%s\n需要的话，改写后用 reply / contact 重新发。", c.Key, v.Reason, text, c.LastAsked)})
+		return fmt.Sprintf("这个我需要先跟 %s 确认一下，确认后再回复你。", owner), true
+	})
 }

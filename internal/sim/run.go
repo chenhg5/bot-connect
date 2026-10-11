@@ -11,6 +11,7 @@ import (
 	"github.com/chenhg5/bot-connect/internal/app"
 	"github.com/chenhg5/bot-connect/internal/domain/delegation"
 	. "github.com/chenhg5/bot-connect/internal/domain/shared"
+	"github.com/chenhg5/bot-connect/internal/judge"
 )
 
 // Result of one case.
@@ -253,6 +254,37 @@ func (h *Harness) check(ck Check, msgs []Msg, calls []ToolCall, before map[strin
 			if _, ok := before[k]; !ok {
 				return fmt.Sprintf("unchanged: %s was created%s", k, why)
 			}
+		}
+	case "judge":
+		var texts []string
+		for _, m := range msgs {
+			for _, t := range h.chatsFor(ck.To) {
+				if m.Chat == t {
+					texts = append(texts, m.Text)
+				}
+			}
+		}
+		if len(texts) == 0 {
+			return fmt.Sprintf("judge %q: no message to %q%s", ck.Question, firstNonEmpty(ck.To, "owner"), why)
+		}
+		ans, err := h.judge.Ask(context.Background(), map[string]any{"messages": texts, "case": h.Case.Title},
+			map[string]judge.Question{"q": judge.Noul(ck.Question)})
+		if err != nil {
+			return fmt.Sprintf("judge %q: %v (configure [judge] to run semantic checks)", ck.Question, err)
+		}
+		p := ans["q"].Noul
+		if ck.AtMost > 0 {
+			if p > ck.AtMost {
+				return fmt.Sprintf("judge %q: %.2f > %.2f%s", ck.Question, p, ck.AtMost, why)
+			}
+			return ""
+		}
+		min := ck.AtLeast
+		if min == 0 {
+			min = 0.7
+		}
+		if p < min {
+			return fmt.Sprintf("judge %q: %.2f < %.2f in: %s%s", ck.Question, p, min, clip(strings.Join(texts, " / "), 200), why)
 		}
 	case "latency":
 		max, err := time.ParseDuration(ck.Max)

@@ -98,6 +98,10 @@ type Conversation struct {
 	// kind that created it so switching brains starts fresh.
 	BrainKind    string `json:"brain_kind,omitempty"`
 	BrainSession string `json:"brain_session,omitempty"`
+	// Peer is who is on the other side of a private chat; LastAsked the
+	// latest message from there (the outbound guard uses both).
+	Peer      string `json:"peer,omitempty"`
+	LastAsked string `json:"last_asked,omitempty"`
 }
 
 // Turn is one unit of work for the brain: everything pending in a lane.
@@ -136,6 +140,9 @@ type Options struct {
 	// TurnDone is told when a main-session turn ends: the signals it was
 	// woken for and whether it answered.
 	TurnDone func(signalIDs []string, answered bool)
+	// Egress checks a message before it goes to a conversation; it returns
+	// the text to send instead and whether to send at all.
+	Egress func(ctx context.Context, c *Conversation, text string) (string, bool)
 }
 
 type lane struct {
@@ -238,6 +245,10 @@ func (h *Hub) onInbound(in Inbound) {
 	if user.Role == identity.RoleOwner && !in.IsGroup {
 		h.ownerChat[in.Platform] = in.ChatID
 	}
+	if !in.IsGroup {
+		conv.Peer = user.ID
+	}
+	conv.LastAsked = text
 	h.mu.Unlock()
 
 	if strings.HasPrefix(text, "/") {
@@ -377,9 +388,36 @@ func (h *Hub) SendTo(ctx context.Context, convKey, text string) error {
 	if p == nil {
 		return fmt.Errorf("platform %s not available", c.Platform)
 	}
+	out, ok := h.egress(ctx, c, text)
+	if !ok {
+		return fmt.Errorf("message held back by the outbound check")
+	}
+	text = out
 	err := p.Send(ctx, c.ChatID, text)
 	h.opts.Audit.Record(audit.Event{Type: audit.Outbound, Platform: c.Platform, Conv: convKey, Text: audit.Clip(text, 2000), Error: errString(err)})
 	return err
+}
+
+// SetEgress installs the outbound check.
+func (h *Hub) SetEgress(f func(ctx context.Context, c *Conversation, text string) (string, bool)) {
+	h.opts.Egress = f
+}
+
+func (h *Hub) egress(ctx context.Context, c *Conversation, text string) (string, bool) {
+	if h.opts.Egress == nil || c == nil {
+		return text, true
+	}
+	h.mu.Lock()
+	cp := *c
+	h.mu.Unlock()
+	return h.opts.Egress(ctx, &cp, text)
+}
+
+// IsOwnerConv reports whether a conversation is the owner's private chat.
+func (h *Hub) IsOwnerConv(c *Conversation) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return c != nil && !c.IsGroup && h.ownerChat[c.Platform] == c.ChatID
 }
 
 // SetIntake routes messages into the main session (intake turns them into
@@ -663,8 +701,12 @@ func (h *Hub) runTurn(ctx context.Context, l *lane) {
 		slog.Warn("no conversation to reply to", "conv", conv.Key)
 		return
 	}
+	out, ok := h.egress(ctx, target, reply)
+	if !ok {
+		return
+	}
 	if p := h.platforms[target.Platform]; p != nil {
-		if err := p.Send(ctx, target.ChatID, reply); err != nil {
+		if err := p.Send(ctx, target.ChatID, out); err != nil {
 			slog.Error("send reply", "conv", target.Key, "err", err)
 		}
 	}

@@ -152,10 +152,17 @@ type Triage interface {
 }
 
 type TriageResult struct {
-	Wake  string // "" keep the policy's decision | now | batch | ignore
-	Level *int
-	Note  string
+	Wake       string // "" keep the policy's decision | now | batch | ignore
+	Level      *int
+	Note       string
+	Intent     string  // chat | status | request | reply | decision | who | other
+	Action     string  // for a reply to an assignment: accept | decline | counter | question | deliver | progress
+	Confidence float64 // of Action
 }
+
+// Say posts a message into a conversation (set by the wiring; used for
+// acknowledgements the scaffold gives without waking the brain).
+type Say func(ctx context.Context, convKey, text string) error
 
 // EventSink receives committed events (audit, metrics, board sync…).
 type EventSink interface {

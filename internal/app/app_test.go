@@ -391,3 +391,18 @@ func TestPersistenceAndAtomicity(t *testing.T) {
 		t.Fatalf("reloaded: %+v workers=%d", got, workers)
 	}
 }
+
+func TestPromiseBeforeDueIsAccept(t *testing.T) {
+	r := newRig(t, jsonstore.Memory())
+	a := r.app
+	due := t0().Add(72 * time.Hour)
+	it, err := a.PlanItem(ctx, owner, planning.Spec{Project: "P3", Title: "埋点方案", Due: &due})
+	must(t, err)
+	as, err := a.Delegate(ctx, owner, app.DelegateSpec{Item: it.ID, Worker: "jerry", Why: NeedKnowledge})
+	must(t, err)
+	sooner := t0().Add(24 * time.Hour)
+	must(t, a.Report(ctx, Actor{Worker: "jerry"}, as.ID, app.Report{Action: "counter", Due: &sooner}))
+	if cur, _ := a.Assignment(as.ID); cur.Status != delegation.Accepted || cur.Brief.Due == nil || !cur.Brief.Due.Equal(due) {
+		t.Fatalf("an earlier promise is an acceptance and leaves the due alone: %s %v", cur.Status, cur.Brief.Due)
+	}
+}

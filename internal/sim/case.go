@@ -132,6 +132,7 @@ type Step struct {
 //	tool           Called were all used, NotCalled none, during the step (or the case)
 //	unchanged      no item or assignment changed status during the step
 //	latency        the first message after the step began came within Max
+//	judge          the L1 judge answers Question about the messages to To: the probability must be ≥ AtLeast (default 0.7) or ≤ AtMost
 type Check struct {
 	Type        string   `toml:"type"`
 	To          string   `toml:"to"`
@@ -147,6 +148,9 @@ type Check struct {
 	Called      []string `toml:"called"`
 	NotCalled   []string `toml:"not_called"`
 	Max         string   `toml:"max"`
+	Question    string   `toml:"question"`
+	AtLeast     float64  `toml:"at_least"`
+	AtMost      float64  `toml:"at_most"`
 	Why         string   `toml:"why"` // what the check protects, shown when it fails
 }
 

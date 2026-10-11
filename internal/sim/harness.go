@@ -22,6 +22,7 @@ import (
 	"github.com/chenhg5/bot-connect/internal/domain/workforce"
 	"github.com/chenhg5/bot-connect/internal/hub"
 	"github.com/chenhg5/bot-connect/internal/identity"
+	"github.com/chenhg5/bot-connect/internal/judge"
 	"github.com/chenhg5/bot-connect/internal/tools"
 	"github.com/chenhg5/bot-connect/internal/toolserver"
 	"github.com/chenhg5/bot-connect/internal/worker"
@@ -134,6 +135,7 @@ type Harness struct {
 	rec   *recorder
 	srv   *toolserver.Server
 	items map[string]ItemID // case refs → ids
+	judge judge.Judge
 	dir   string
 	stop  context.CancelFunc
 }
@@ -173,7 +175,8 @@ func New(ctx context.Context, cfg *config.Config, c Case) (*Harness, error) {
 			return "", h.Hub.NotifyOwner(ctx, text)
 		}),
 	}})
-	assemble.WirePM(h.App, h.Hub, bc)
+	assemble.WirePM(h.App, h.Hub, bc, cfg.Judge)
+	h.judge = assemble.NewJudge(cfg.Judge)
 
 	reg := tools.New(tools.Env{Bot: bc.Name, Workers: wm, Messenger: h.Hub, Scope: worker.Scope{Bot: bc.Name}, App: h.App})
 	h.srv = toolserver.New(reg)

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/chenhg5/bot-connect/internal/domain/attention"
+	"github.com/chenhg5/bot-connect/internal/domain/delegation"
 	"github.com/chenhg5/bot-connect/internal/domain/inbox"
 	. "github.com/chenhg5/bot-connect/internal/domain/shared"
 	"github.com/chenhg5/bot-connect/internal/domain/workforce"
@@ -63,8 +64,14 @@ func (a *App) Ingest(ctx context.Context, sp SignalSpec) (inbox.Signal, bool, er
 	draft.Actor, draft.ActorName, draft.Summary, draft.Body, draft.Refs, draft.ReplyTo, draft.Level =
 		sp.Actor, sp.ActorName, sp.Summary, sp.Body, sp.Refs, sp.ReplyTo, sp.Level
 	draft.Wake = a.Policy.Mode(draft)
-	if a.Triage != nil {
-		if r, err := a.Triage.Assess(ctx, draft); err == nil {
+	var tri TriageResult
+	if a.Triage != nil && (sp.Source == inbox.DirectMessage || sp.Source == inbox.Mention) {
+		// triage is on the hot path: a slow judge must not delay the reply
+		tctx, cancel := context.WithTimeout(ctx, 4*time.Second)
+		r, err := a.Triage.Assess(tctx, draft)
+		cancel()
+		if err == nil {
+			tri = r
 			if r.Level != nil {
 				draft.Level = *r.Level
 				draft.Wake = a.Policy.Mode(draft)
@@ -72,8 +79,27 @@ func (a *App) Ingest(ctx context.Context, sp SignalSpec) (inbox.Signal, bool, er
 			if r.Wake != "" {
 				draft.Wake = r.Wake
 			}
+			if r.Intent != "" {
+				draft.Reason = sp.Reason + ":" + r.Intent
+			}
 		} else if a.Log != nil {
 			a.Log.Info("triage failed; using the policy", "err", err)
+		}
+	}
+	// What needs no decision lands without waking the brain: a person
+	// accepting the one request waiting for their answer.
+	if tri.Action == "accept" && tri.Confidence >= 0.9 && sp.Actor.Worker != "" && sp.Actor.Worker != Owner {
+		if as, ok := a.onlyOffer(sp.Actor.Worker); ok {
+			if err := a.Report(ctx, sp.Actor, as.ID, Report{Action: "accept", Note: sp.Body}); err == nil {
+				draft.Status, draft.Note, draft.Wake = inbox.Handled, "landed by triage: accepted "+string(as.ID), "ignore"
+				if a.Say != nil && sp.ReplyTo.Conv != "" {
+					ack := fmt.Sprintf("收到，已登记你接下了 %s「%s」", as.ID, oneLine(as.Brief.Goal, 40))
+					if as.Brief.Due != nil {
+						ack += "，截止 " + fmtDue(as.Brief.Due)
+					}
+					_ = a.Say(ctx, sp.ReplyTo.Conv, ack+"。")
+				}
+			}
 		}
 	}
 	var out inbox.Signal
@@ -86,7 +112,7 @@ func (a *App) Ingest(ctx context.Context, sp SignalSpec) (inbox.Signal, bool, er
 			}
 		}
 		draft.ID = s.NextID("S")
-		if draft.Wake == "ignore" {
+		if draft.Wake == "ignore" && draft.Status == inbox.Pending {
 			draft.Status, draft.Note = inbox.Ignored, "wake policy: ignore"
 		}
 		s.Signals[draft.ID] = draft
@@ -467,4 +493,20 @@ func homeOf(c *attention.Context, p ProjectID) string {
 		return x.Home
 	}
 	return ""
+}
+
+// onlyOffer returns the worker's single assignment waiting for their answer.
+func (a *App) onlyOffer(w WorkerID) (delegation.Assignment, bool) {
+	var found []delegation.Assignment
+	a.Store.Read(func(s *State) {
+		for _, x := range s.Assignments {
+			if x.Worker == w && x.Status == delegation.Offered {
+				found = append(found, x)
+			}
+		}
+	})
+	if len(found) != 1 {
+		return delegation.Assignment{}, false
+	}
+	return found[0], true
 }

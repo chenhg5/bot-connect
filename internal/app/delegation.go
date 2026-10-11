@@ -261,6 +261,11 @@ func (a *App) Report(ctx context.Context, by Actor, id AssignmentID, r Report) e
 			if r.Due == nil {
 				return nil, Invalid("a counter-proposal needs a new due time")
 			}
+			if as.Status == delegation.Offered && as.Brief.Due != nil && !r.Due.After(*as.Brief.Due) {
+				// promising it by the due date (or sooner) is accepting, with an ETA
+				evs, err = as.Accept(r.Due, r.Note, now, by)
+				break
+			}
 			evs, err = as.Counter(*r.Due, r.Note, now, by)
 		case "start":
 			evs, err = as.Start(now, by)
