@@ -210,12 +210,13 @@ var rules = map[string]rule{
 	"fail":    {[]Status{Accepted, Working, Blocked, Paused, Revising}, Failed, true},
 	"release": {[]Status{Accepted, Working, Blocked, Paused, Revising}, Released, true},
 
-	"accept_counter": {[]Status{Countered}, Working, false},
-	"answer":         {[]Status{Blocked}, Working, false},
-	"verify":         {[]Status{Delivered}, Verified, false},
-	"revise":         {[]Status{Delivered}, Revising, false},
-	"cancel":         {[]Status{Offered, Countered, Accepted, Working, Blocked, Paused, Delivered, Revising}, Cancelled, false},
-	"expire":         {[]Status{Offered, Countered}, Expired, false},
+	"accept_counter":  {[]Status{Countered}, Working, false},
+	"decline_counter": {[]Status{Countered}, Offered, false},
+	"answer":          {[]Status{Blocked}, Working, false},
+	"verify":          {[]Status{Delivered}, Verified, false},
+	"revise":          {[]Status{Delivered}, Revising, false},
+	"cancel":          {[]Status{Offered, Countered, Accepted, Working, Blocked, Paused, Delivered, Revising}, Cancelled, false},
+	"expire":          {[]Status{Offered, Countered}, Expired, false},
 }
 
 func (a *Assignment) apply(name string, s Step, by Actor) ([]Event, error) {
@@ -242,7 +243,7 @@ func (a *Assignment) apply(name string, s Step, by Actor) ([]Event, error) {
 var eventNames = map[string]string{
 	"accept": "accepted", "decline": "declined", "counter": "countered", "start": "started", "ask": "asked",
 	"pause": "paused", "deliver": "delivered", "answerq": "answered", "fail": "failed", "release": "released",
-	"accept_counter": "counter_accepted", "answer": "question_answered", "verify": "verified", "revise": "revised",
+	"accept_counter": "counter_accepted", "decline_counter": "counter_declined", "answer": "question_answered", "verify": "verified", "revise": "revised",
 	"cancel": "cancelled", "expire": "expired",
 }
 
@@ -349,6 +350,15 @@ func (a *Assignment) AcceptCounter(at time.Time, by Actor) ([]Event, error) {
 	evs, err := a.apply("accept_counter", Step{At: at, Due: a.ProposedDue}, by)
 	if err == nil {
 		a.Brief.Due, a.ProposedDue = a.ProposedDue, nil
+	}
+	return evs, err
+}
+
+// DeclineCounter rejects the worker's proposed deadline; assignment returns to Offered with original deadline.
+func (a *Assignment) DeclineCounter(reason string, at time.Time, by Actor) ([]Event, error) {
+	evs, err := a.apply("decline_counter", Step{At: at, Note: reason}, by)
+	if err == nil {
+		a.ProposedDue = nil
 	}
 	return evs, err
 }

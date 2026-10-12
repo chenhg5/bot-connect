@@ -285,9 +285,9 @@ func addPM(r *Registry, env Env) {
 	})
 	r.add(Tool{
 		Name:          "review",
-		Description:   "Requester side of an assignment: verify a delivery (check every acceptance criterion first), revise (say exactly what's missing), cancel, answer_question (reply to the worker's question), accept_counter (take their proposed deadline).",
+		Description:   "Requester side of an assignment: verify a delivery (check every acceptance criterion first), revise (say exactly what's missing), cancel, answer_question (reply to the worker's question), accept_counter (take their proposed deadline), decline_counter (reject counter-offer and keep original deadline).",
 		PrincipalOnly: true,
-		Schema: obj(props{"assignment": str("assignment id, e.g. A12"), "action": enum("", "verify", "revise", "cancel", "answer_question", "accept_counter"),
+		Schema: obj(props{"assignment": str("assignment id, e.g. A12"), "action": enum("", "verify", "revise", "cancel", "answer_question", "accept_counter", "decline_counter"),
 			"note": str("what's missing / the answer / why")}, "assignment", "action"),
 		Handler: func(ctx context.Context, tc TurnContext, a map[string]any) (string, error) {
 			if s(a, "action") == "accept_counter" && !principalSpoke(pm, tc) {

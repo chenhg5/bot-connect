@@ -429,8 +429,10 @@ func (a *App) Review(ctx context.Context, by Actor, id AssignmentID, action, not
 			evs, err = as.AnswerQuestion(note, now, by)
 		case "accept_counter":
 			evs, err = as.AcceptCounter(now, by)
+		case "decline_counter":
+			evs, err = as.DeclineCounter(note, now, by)
 		default:
-			return nil, Invalid("unknown review action %q (verify, revise, cancel, answer_question, accept_counter)", action)
+			return nil, Invalid("unknown review action %q (verify, revise, cancel, answer_question, accept_counter, decline_counter)", action)
 		}
 		if err != nil {
 			return nil, err
@@ -441,9 +443,12 @@ func (a *App) Review(ctx context.Context, by Actor, id AssignmentID, action, not
 	if err != nil {
 		return err
 	}
-	kind := map[string]string{"verify": "verified", "revise": "revise", "cancel": "cancelled", "answer_question": "answer", "accept_counter": "counter_accepted"}[action]
+	kind := map[string]string{"verify": "verified", "revise": "revise", "cancel": "cancelled", "answer_question": "answer", "accept_counter": "counter_accepted", "decline_counter": "counter_declined"}[action]
 	if action == "accept_counter" {
 		note = "按你提的时间来，截止 " + fmtDue(as.Brief.Due)
+	}
+	if action == "decline_counter" {
+		note = firstNonEmpty(note, "还是按原计划") + "，截止仍是 " + fmtDue(as.Brief.Due)
 	}
 	a.notify(ctx, as, Notice{Kind: kind, Text: note})
 	return nil
