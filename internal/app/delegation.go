@@ -365,7 +365,10 @@ func (a *App) afterWorkerEvent(ctx context.Context, as delegation.Assignment, r 
 	case "ask":
 		text = head + " 有问题：" + r.Note
 	case "deliver":
-		text = head + " 已交付，等待验收：" + oneLine(r.Result, 400)
+		text = head + " 已交付，等待验收。交付内容：\n" + clipRunes(r.Result, 6000)
+		if n := len([]rune(r.Result)); n > 6000 {
+			text += fmt.Sprintf("\n（共 %d 字，后面的部分用 assignment 工具看全文）", n)
+		}
 		if len(r.Evidence) > 0 {
 			text += "\n证据：" + strings.Join(r.Evidence, "；")
 		}
@@ -553,4 +556,54 @@ func (a *App) tellPrincipal(ctx context.Context, text string) {
 	if d := a.driverFor(principal); d != nil {
 		_ = d.Notify(ctx, principal, delegation.Assignment{}, Notice{Kind: "message", Text: text})
 	}
+}
+
+// clipRunes keeps the first n characters, line breaks and all.
+func clipRunes(s string, n int) string {
+	r := []rune(strings.TrimSpace(s))
+	if len(r) <= n {
+		return string(r)
+	}
+	return string(r[:n]) + "…"
+}
+
+// DescribeAssignment is everything about an assignment, for reviewing it:
+// what was asked, the full delivery and evidence, and its history.
+func (a *App) DescribeAssignment(id AssignmentID) (string, delegation.Assignment, bool) {
+	as, ok := a.Assignment(id)
+	if !ok {
+		return "", as, false
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s %s→%s（%s）状态 %s，事项 %s\n目标：%s\n", as.ID, as.Kind, as.Worker, firstNonEmpty(string(as.Why), "-"), as.Status, as.Item, as.Brief.Goal)
+	if as.Brief.Context != "" {
+		b.WriteString("背景：" + as.Brief.Context + "\n")
+	}
+	if len(as.Brief.Done) > 0 {
+		b.WriteString("完成标准：\n- " + strings.Join(as.Brief.Done, "\n- ") + "\n")
+	}
+	if as.Brief.Due != nil {
+		b.WriteString("截止：" + fmtDue(as.Brief.Due) + "\n")
+	}
+	if as.Question != "" {
+		b.WriteString("待回答的问题：" + as.Question + "\n")
+	}
+	if as.Choice != "" {
+		b.WriteString("答复：" + as.Choice + "\n")
+	}
+	if as.Result != "" {
+		b.WriteString("交付全文：\n" + clipRunes(as.Result, 20000) + "\n")
+	}
+	if len(as.Evidence) > 0 {
+		b.WriteString("证据：" + strings.Join(as.Evidence, "；") + "\n")
+	}
+	b.WriteString("经过：\n")
+	for _, st := range as.History {
+		line := fmt.Sprintf("- %s %s（%s）", st.At.Format("01-02 15:04"), st.Type, st.By)
+		if st.Note != "" {
+			line += "：" + oneLine(st.Note, 200)
+		}
+		b.WriteString(line + "\n")
+	}
+	return strings.TrimRight(b.String(), "\n"), as, true
 }

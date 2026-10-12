@@ -544,7 +544,7 @@ func (a *App) dispatchNode(ctx context.Context, id ItemID, running *int) error {
 			dep := s.Items[d]
 			for _, as := range s.Assignments {
 				if as.Item == d && as.Status == delegation.Verified && as.Result != "" {
-					context = append(context, fmt.Sprintf("「%s」的结果：%s", dep.Title, oneLine(as.Result, 1500)))
+					context = append(context, fmt.Sprintf("「%s」的结果：%s", dep.Title, clipRunes(as.Result, 4000)))
 				}
 			}
 		}

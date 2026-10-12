@@ -268,6 +268,22 @@ func addPM(r *Registry, env Env) {
 		},
 	})
 	r.add(Tool{
+		Name: "assignment",
+		Description: "Everything about one assignment: what was asked (goal, context, acceptance criteria, due), the full delivery and evidence, answers, and its history. " +
+			"Read it before review verify / revise — the delivery signal may show only the start.",
+		Schema: obj(props{"assignment": str("assignment id")}, "assignment"),
+		Handler: func(ctx context.Context, tc TurnContext, a map[string]any) (string, error) {
+			out, as, ok := pm.DescribeAssignment(AssignmentID(s(a, "assignment")))
+			if !ok {
+				return "", &ToolError{KindNotFound, "no assignment " + s(a, "assignment")}
+			}
+			if by := actorOf(pm, tc); !by.Privileged() && by.Worker != as.Worker {
+				return "", &ToolError{KindPermission, "permission denied: " + string(as.ID) + " is not yours"}
+			}
+			return out, nil
+		},
+	})
+	r.add(Tool{
 		Name:          "review",
 		Description:   "Requester side of an assignment: verify a delivery (check every acceptance criterion first), revise (say exactly what's missing), cancel, answer_question (reply to the worker's question), accept_counter (take their proposed deadline).",
 		PrincipalOnly: true,

@@ -323,7 +323,7 @@ func mentions(text string, it planning.Item, project string) bool {
 func llmDeliverable(ctx context.Context, ag AgentSpec, a delegation.Assignment) (string, error) {
 	var b strings.Builder
 	fmt.Fprintf(&b, "你是一个 agent：%s。直接完成下面的任务，把交付内容的全文写出来（中文，不超过 1200 字）。"+
-		"缺信息就做合理假设并注明，不要说做不到，不要问问题，不要写占位符。\n\n任务：%s\n", ag.Description, a.Brief.Goal)
+		"你没有任何工具，也不能访问外部系统，只输出文字。设计类的产出就用文字写清楚结构、布局、尺寸和样式。缺信息就做合理假设并注明，不要说做不到，不要问问题，不要写占位符。\n\n任务：%s\n", ag.Description, a.Brief.Goal)
 	if a.Brief.Context != "" {
 		b.WriteString("背景：" + a.Brief.Context + "\n")
 	}
