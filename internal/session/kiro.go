@@ -127,6 +127,11 @@ func (s *KiroStore) parse(path string, mod time.Time) (Info, bool) {
 		}
 
 		// Try to extract workspace from session metadata
+		// NOTE: Workspace detection is opportunistic and depends on session_start or
+		// session_metadata events containing "workspace" or "cwd" fields. If these
+		// events are missing or use a different structure, workspace filtering will
+		// not work for this session. This is a known limitation of kiro-acp's current
+		// session format.
 		if msg.Type == "session_start" || msg.Type == "session_metadata" {
 			// Parse metadata for workspace information
 			var meta map[string]any

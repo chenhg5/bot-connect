@@ -2,7 +2,9 @@ package brain
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/chenhg5/bot-connect/internal/agentcli"
@@ -30,6 +32,11 @@ func (a *kiroAdapter) Caps() Caps { return Caps{Sessions: true, SystemPrompt: fa
 func (a *kiroAdapter) Run(ctx context.Context, req Request) (Response, error) {
 	// Map model names: "sonnet" -> "claude-sonnet-4-20250514", etc.
 	model := a.mapModel(a.cfg.Model)
+
+	// Validate model to prevent flag injection
+	if err := validateModel(model); err != nil {
+		return Response{}, err
+	}
 
 	// Build prompt: inline system prompt if this is a new session or fresh turn
 	prompt := req.Prompt
@@ -111,4 +118,22 @@ func (a *kiroAdapter) mapModel(model string) string {
 // Kiro stores sessions in ~/.kiro/sessions/ by default.
 func (a *kiroAdapter) home() string {
 	return filepath.Join(filepath.Dir(a.cfg.WorkDir), "kiro")
+}
+
+// validateModel checks that a model name is safe to pass as a command argument.
+// Rejects model names that start with - (flag injection) or contain invalid characters.
+// Valid model names: alphanumerics, dots, hyphens (e.g., "claude-sonnet-4-20250514").
+func validateModel(model string) error {
+	if model == "" {
+		return fmt.Errorf("model name cannot be empty")
+	}
+	if strings.HasPrefix(model, "-") {
+		return fmt.Errorf("model name cannot start with - (potential flag injection): %q", model)
+	}
+	// Allow alphanumerics, dots, hyphens, underscores
+	validPattern := regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
+	if !validPattern.MatchString(model) {
+		return fmt.Errorf("model name contains invalid characters (allowed: a-z, A-Z, 0-9, ., -, _): %q", model)
+	}
+	return nil
 }

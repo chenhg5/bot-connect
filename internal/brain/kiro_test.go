@@ -69,3 +69,41 @@ func TestKiroAdapter_Registration(t *testing.T) {
 		t.Errorf("adapter.Name() = %q, want %q", adapter.Name(), "kiro")
 	}
 }
+
+func TestValidateModel(t *testing.T) {
+	tests := []struct {
+		model   string
+		wantErr bool
+	}{
+		// Valid models
+		{"claude-sonnet-4-20250514", false},
+		{"claude-opus-4-20250514", false},
+		{"gpt-6-sol", false},
+		{"sonnet", false},
+		{"model-v1.2.3", false},
+		{"model_name_123", false},
+
+		// Invalid: flag injection
+		{"--help", true},
+		{"-v", true},
+		{"--output=/etc/passwd", true},
+
+		// Invalid: special characters
+		{"model;rm -rf /", true},
+		{"model|cat", true},
+		{"model`whoami`", true},
+		{"model$HOME", true},
+		{"model&", true},
+		{"model name", true}, // space
+
+		// Invalid: empty
+		{"", true},
+	}
+
+	for _, tt := range tests {
+		err := validateModel(tt.model)
+		if (err != nil) != tt.wantErr {
+			t.Errorf("validateModel(%q) error = %v, wantErr %v", tt.model, err, tt.wantErr)
+		}
+	}
+}
