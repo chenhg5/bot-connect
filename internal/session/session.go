@@ -47,8 +47,10 @@ type Catalog struct{ stores []Store }
 
 func NewCatalog(stores ...Store) *Catalog { return &Catalog{stores: stores} }
 
-// Default returns a catalog over the local Claude Code and Codex stores.
-func Default() *Catalog { return NewCatalog(NewClaudeStore(""), NewCodexStore("")) }
+// Default returns a catalog over the local Claude Code, Codex, and Kiro stores.
+func Default() *Catalog {
+	return NewCatalog(NewClaudeStore(""), NewCodexStore(""), NewKiroStore(""))
+}
 
 func (c *Catalog) List(agent string, limit int, keep func(string) bool) ([]Info, error) {
 	var all []Info

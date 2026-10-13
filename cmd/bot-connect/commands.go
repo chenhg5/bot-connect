@@ -573,7 +573,7 @@ func sessionCmd() *cli.Command {
 			Flags: []cli.Flag{configFlag,
 				{Name: "worker", Type: cli.String, Desc: "only sessions of this worker"},
 				{Name: "all", Type: cli.Bool, Desc: "every session on this machine, not just covered ones"},
-				{Name: "agent", Type: cli.Enum, Enum: []string{"claudecode", "codex"}, Desc: "only this agent"},
+				{Name: "agent", Type: cli.Enum, Enum: []string{"claudecode", "codex", "kiro"}, Desc: "only this agent"},
 				{Name: "limit", Type: cli.Int, Default: "20", Desc: "max sessions"},
 			},
 			Run: func(c *cli.Ctx) error {

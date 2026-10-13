@@ -41,7 +41,7 @@ history_limit = 30            # messages of plain-text history kept per conversa
 # parallel = 4                   # agent tasks plans may run at once
 
 [brain]
-agent = "claudecode"          # "claudecode" | "codex" | "pi" | "command"  (pi: fastest; needs provider when isolated)
+agent = "claudecode"          # "claudecode" | "codex" | "pi" | "kiro" | "command"  (pi: fastest; needs provider when isolated)
 # work_dir = "~/.bot-connect/brain"
 model = "sonnet"
 # claudecode: built-in tools the brain keeps; default none (bot tools only).
@@ -52,6 +52,11 @@ model = "sonnet"
 #                                    # never reach the brain (--bare with an API key, else --setting-sources "")
 # codex: sandbox for the brain process (default read-only)
 # sandbox = "read-only"
+# kiro: uses the Kiro agent system via kiro-acp (requires: uv tool install kiro-acp-gateway)
+#   - Accesses Kiro's models through ACP (Agent Client Protocol)
+#   - Session storage in ~/.kiro/sessions/
+#   - Model names: claude-sonnet-4-20250514, claude-opus-4-20250514, etc. (or short names: "sonnet", "opus")
+#   - Requires kiro-cli to be logged in and kiro-acp installed globally
 # command: any agent CLI. "{prompt}" is replaced by the turn prompt (else stdin);
 # stdout is the reply; it calls tools via `bot-connect tool call --name <tool> --args '<json>'`.
 # command = ["pi", "-p", "{prompt}"]

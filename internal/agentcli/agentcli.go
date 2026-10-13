@@ -289,3 +289,66 @@ func piText(content any) string {
 	}
 	return strings.Join(parts, "\n")
 }
+
+// Kiro runs `kiro-acp <args>`; args must include prompt --output json ...
+// kiro-acp is provided by the kiro-acp-gateway package (uv tool install kiro-acp-gateway).
+func Kiro(ctx context.Context, c Call) (Result, error) {
+	var res Result
+	var failure string
+	stderr, err := runJSONL(ctx, c, "kiro-acp", func(ev map[string]any) {
+		switch ev["type"] {
+		case "session":
+			// Session started or resumed
+			if id, _ := ev["session_id"].(string); id != "" {
+				res.SessionID = id
+			}
+		case "content":
+			// Content block from assistant
+			if t, _ := ev["text"].(string); strings.TrimSpace(t) != "" {
+				if res.Text != "" {
+					res.Text += "\n"
+				}
+				res.Text += t
+			}
+		case "message":
+			// Complete message event
+			if role, _ := ev["role"].(string); role == "assistant" {
+				if content, ok := ev["content"].([]any); ok {
+					for _, block := range content {
+						if bm, ok := block.(map[string]any); ok && bm["type"] == "text" {
+							if t, _ := bm["text"].(string); strings.TrimSpace(t) != "" {
+								if res.Text != "" {
+									res.Text += "\n"
+								}
+								res.Text += t
+							}
+						}
+					}
+				}
+			}
+		case "turn_complete":
+			// Turn finished successfully
+			if sid, _ := ev["session_id"].(string); sid != "" {
+				res.SessionID = sid
+			}
+			if t, _ := ev["text"].(string); t != "" && res.Text == "" {
+				res.Text = t
+			}
+		case "error":
+			// Error occurred
+			if msg, _ := ev["message"].(string); msg != "" {
+				failure = msg
+			} else if msg, _ := ev["error"].(string); msg != "" {
+				failure = msg
+			}
+		}
+	})
+
+	if res.Text == "" && failure != "" {
+		return res, fmt.Errorf("kiro-acp: %s", Tail(failure, 600))
+	}
+	if err != nil && res.Text == "" {
+		return res, fmt.Errorf("kiro-acp: %v: %s", err, Tail(stderr, 600))
+	}
+	return res, nil
+}
