@@ -56,3 +56,33 @@ func TestDossierLimit(t *testing.T) {
 		t.Fatal("bad probe")
 	}
 }
+
+func TestPermits(t *testing.T) {
+	home := "/home/c"
+	w := Action{Kind: ActWrite, Path: "/home/c/code/projects/cc/handoffs/2026-10-15.md", Content: "x"}
+	if !Permits("write ~/code/projects/*/handoffs/**", w, home) {
+		t.Fatal("a handoff in any project")
+	}
+	if Permits("write ~/code/projects/*/handoffs/**", Action{Kind: ActWrite, Path: "/home/c/code/projects/cc/state/s.json"}, home) {
+		t.Fatal("not the state file")
+	}
+	if Permits("write ~/code/projects/*/handoffs/**", Action{Kind: ActWrite, Path: "/home/c/code/projects/cc/handoffs/../state/s.json"}, home) {
+		t.Fatal("no escaping with ..")
+	}
+	c := Action{Kind: ActCmd, Program: "hp", Args: []string{"task", "update", "t1", "--status", "done"}}
+	if !Permits("cmd hp task update *", c, home) || Permits("cmd hp task create *", c, home) || Permits("write hp", c, home) {
+		t.Fatal("cmd patterns")
+	}
+	s := Action{Kind: ActSession, Harness: "codex", Session: "01a1", Message: "继续"}
+	if !Permits("session codex *", s, home) || Permits("session claude *", s, home) {
+		t.Fatal("session patterns")
+	}
+	for _, bad := range []string{"cmd hp", "cmd hp *", "write /**", "write ~/**", "write /tmp", "session codex", "rm -rf"} {
+		if ValidPermission(bad) == nil {
+			t.Fatalf("%q is too broad or malformed", bad)
+		}
+	}
+	if err := ValidPermission("write ~/code/projects/*/handoffs/**"); err != nil {
+		t.Fatal(err)
+	}
+}

@@ -257,6 +257,10 @@ func (h *Harness) check(ck Check, msgs []Msg, calls []ToolCall, before map[strin
 		if msg := h.checkDossier(ck); msg != "" {
 			return msg + why
 		}
+	case "file":
+		if msg := h.checkFile(ck); msg != "" {
+			return msg + why
+		}
 	case "watches":
 		if n := len(h.App.Watches("")); n < max(ck.Min, 1) {
 			return fmt.Sprintf("watches: %d, want at least %d%s", n, max(ck.Min, 1), why)
@@ -623,4 +627,39 @@ func (h *Harness) checkDossier(ck Check) string {
 		why = append(why, fmt.Sprintf("missing %v", missing))
 	}
 	return "dossier: " + strings.Join(why, "; ") + "\n" + clip(have[0], 600)
+}
+
+// checkFile: files in the fixture matching Title (a glob relative to it)
+// contain one of ContainsAny (if set) and none of NotContains.
+func (h *Harness) checkFile(ck Check) string {
+	if h.fixture == "" {
+		return "file: the case has no fixture"
+	}
+	matches, _ := filepath.Glob(filepath.Join(h.fixture, filepath.FromSlash(ck.Title)))
+	if len(matches) == 0 {
+		if len(ck.ContainsAny) == 0 && len(ck.NotContains) > 0 {
+			return ""
+		}
+		return fmt.Sprintf("file: nothing matches %s", ck.Title)
+	}
+	found := len(ck.ContainsAny) == 0
+	for _, m := range matches {
+		b, err := os.ReadFile(m)
+		if err != nil {
+			continue
+		}
+		text := string(b)
+		for _, x := range ck.NotContains {
+			if strings.Contains(text, x) {
+				return fmt.Sprintf("file: %s must not contain %q", strings.TrimPrefix(m, h.fixture+"/"), x)
+			}
+		}
+		for _, x := range ck.ContainsAny {
+			found = found || strings.Contains(text, x)
+		}
+	}
+	if !found {
+		return fmt.Sprintf("file: none of %v in %s", ck.ContainsAny, ck.Title)
+	}
+	return ""
 }

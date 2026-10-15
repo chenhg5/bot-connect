@@ -219,6 +219,7 @@ func WireObserve(a *app.App, oc config.Observe) {
 	for i, r := range oc.Roots {
 		roots[i] = config.ExpandHome(r)
 	}
-	a.Prober = &probe.Local{Roots: roots, Commands: append(append([]string(nil), probe.DefaultCommands...), oc.Commands...),
-		Hosts: oc.Hosts, Extra: a.AllowedCommands}
+	l := &probe.Local{Roots: roots, Commands: append(append([]string(nil), probe.DefaultCommands...), oc.Commands...),
+		Hosts: oc.Hosts, Extra: a.AllowedCommands, Sessions: oc.Sessions}
+	a.Prober, a.Hands = l, l
 }

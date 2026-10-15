@@ -6,6 +6,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chenhg5/bot-connect/internal/app"
+	"github.com/chenhg5/bot-connect/internal/domain/inbox"
+
 	"github.com/chenhg5/bot-connect/internal/domain/observe"
 	. "github.com/chenhg5/bot-connect/internal/domain/shared"
 )
@@ -171,6 +174,104 @@ func addObserve(r *Registry, env Env) {
 	})
 }
 
+func addAct(r *Registry, env Env) {
+	pm := env.App
+	r.add(Tool{
+		Name: "act",
+		Description: "Do something outside the bot: run a command (cmd: program + args, no shell), write a file (write: path + content, append or replace), " +
+			"or hand a message to an existing agent session (session: harness = claude / codex / …, session id, message, dir = its project folder; its reply comes back as a signal). " +
+			"Every action needs the principal: a standing permission (act_allow) covers it, or they agree to it. A direct request from them (\"把 X 改成 Y\") is agreement to that one action: " +
+			"confirmed=true covers exactly one action per message of theirs. For anything more — or anything they didn't spell out — propose the actions (kind=propose), show them the list, " +
+			"and after they agree carry it out with kind=proposal id=… confirmed=true; it runs exactly as proposed. Never do more than they agreed to.",
+		PrincipalOnly: true,
+		Schema: obj(props{
+			"kind": enum("cmd / write / session = one action; propose = put several actions (actions[]) to the principal; proposal = carry out a proposal (id) they agreed to",
+				"cmd", "write", "session", "propose", "proposal"),
+			"id":        str("proposal: its id"),
+			"actions":   map[string]any{"type": "array", "description": "propose: the actions, each with kind and its fields", "items": map[string]any{"type": "object"}},
+			"project":   str("the project this is for"),
+			"program":   str("cmd: program name"),
+			"args":      arr("cmd: arguments"),
+			"dir":       str("cmd / session: working directory"),
+			"path":      str("write: file path"),
+			"content":   str("write: what to write"),
+			"append":    boolean("write: add to the end instead of replacing"),
+			"harness":   str("session: claude | codex | … (as configured)"),
+			"session":   str("session: its id"),
+			"message":   str("session: what to tell it — self-contained"),
+			"confirmed": boolean("only in the turn where the principal agreed to exactly this action"),
+		}, "kind"),
+		Handler: func(ctx context.Context, tc TurnContext, a map[string]any) (string, error) {
+			confirmed := a["confirmed"] == true
+			if confirmed && !principalSpoke(pm, tc) {
+				return "", &ToolError{KindPermission, "confirmed=true only in a turn where the principal agreed to this action"}
+			}
+			by := actorOf(pm, tc)
+			var pid ProjectID
+			if s(a, "project") != "" {
+				pid = projectArg(pm, a)
+			}
+			switch s(a, "kind") {
+			case "propose":
+				raw, _ := a["actions"].([]any)
+				var acts []observe.Action
+				for _, x := range raw {
+					if m, ok := x.(map[string]any); ok {
+						acts = append(acts, actionArg(m))
+					}
+				}
+				p, err := pm.ProposeActs(ctx, by, pid, acts)
+				if err != nil {
+					return "", domainErr(err)
+				}
+				return p.Describe() + "\n把这个清单原样给委托人看；他同意后，在那一轮用 kind=proposal id=" + p.ID + " confirmed=true 执行，内容会按清单原样执行。", nil
+			case "proposal":
+				if !confirmed {
+					return "", &ToolError{KindInvalid, "carry out a proposal only with confirmed=true, in the turn where the principal agreed to it"}
+				}
+				lines, err := pm.CarryOut(ctx, by, s(a, "id"))
+				if err != nil {
+					return "", domainErr(err)
+				}
+				return strings.Join(lines, "\n"), nil
+			}
+			act := actionArg(a)
+			out, err := pm.Act(ctx, by, pid, act, confirmed, principalTurn(pm, tc))
+			if err != nil {
+				if out != "" {
+					return "", domainErr(fmt.Errorf("%w\n%s", err, clipT(out, 1500)))
+				}
+				return "", domainErr(err)
+			}
+			return firstNonEmptyT(out, "done: "+act.Describe()), nil
+		},
+	})
+	r.add(Tool{
+		Name: "act_allow",
+		Description: "Record a standing permission the principal just gave, so routine actions don't need asking each time: \"write <path glob>\" (\"**\" = anything below, " +
+			"e.g. write ~/code/projects/*/handoffs/**), \"cmd <program> <subcommand…>\" (\"*\" = one argument), \"session <harness> <session id|*>\". " +
+			"Only in a turn where the principal said so; keep it as narrow as what they agreed to. revoke=true removes one.",
+		PrincipalOnly: true,
+		Schema:        obj(props{"pattern": str("the permission"), "revoke": boolean("remove it instead")}, "pattern"),
+		Handler: func(ctx context.Context, tc TurnContext, a map[string]any) (string, error) {
+			if !principalSpoke(pm, tc) {
+				return "", &ToolError{KindPermission, "only in a turn where the principal gave (or took back) this permission"}
+			}
+			by := actorOf(pm, tc)
+			if a["revoke"] == true {
+				if err := pm.RevokeAct(ctx, by, s(a, "pattern")); err != nil {
+					return "", domainErr(err)
+				}
+				return "revoked: " + s(a, "pattern"), nil
+			}
+			if err := pm.AllowAct(ctx, by, s(a, "pattern")); err != nil {
+				return "", domainErr(err)
+			}
+			return "permission recorded: " + s(a, "pattern") + "\nall standing permissions: " + strings.Join(pm.Grants(), "; "), nil
+		},
+	})
+}
+
 // spanArg reads "30m", "4h", "3d", "1w"; "" is zero.
 func spanArg(v string) (time.Duration, error) {
 	v = strings.TrimSpace(v)
@@ -196,4 +297,22 @@ func clipT(s string, n int) string {
 		return string(r[:n]) + "…"
 	}
 	return s
+}
+
+func actionArg(a map[string]any) observe.Action {
+	return observe.Action{Kind: observe.ActKind(s(a, "kind")), Program: s(a, "program"), Args: strs(a, "args"), Dir: s(a, "dir"),
+		Path: s(a, "path"), Content: s(a, "content"), Append: a["append"] == true,
+		Harness: s(a, "harness"), Session: s(a, "session"), Message: s(a, "message")}
+}
+
+// principalTurn identifies the principal's message this turn handles (its
+// single confirmation belongs to it).
+func principalTurn(pm *app.App, tc TurnContext) string {
+	var ids []string
+	for _, id := range tc.Focus {
+		if x, ok := pm.Signal(id); ok && (x.Source == inbox.DirectMessage || x.Source == inbox.Mention) && x.Actor.Privileged() {
+			ids = append(ids, id)
+		}
+	}
+	return strings.Join(ids, ",")
 }

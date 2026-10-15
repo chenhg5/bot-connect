@@ -262,11 +262,6 @@ func (h *Harness) setup(ctx context.Context) error {
 		if err := a.UpsertWorker(ctx, sys, w); err != nil {
 			return err
 		}
-		if p.Away != "" {
-			if err := a.NoteWorker(ctx, Actor{Worker: w.ID}, w.ID, workforce.Fact{Dim: workforce.Presence, Value: "away", Detail: p.Away}); err != nil {
-				return err
-			}
-		}
 	}
 	for _, ag := range h.Case.Agents {
 		w := workforce.Worker{ID: WorkerID(ag.ID), Name: firstNonEmpty(ag.Name, ag.ID), Kind: workforce.AgentSession, Trust: workforce.Controlled,
@@ -371,6 +366,15 @@ func (h *Harness) setup(ctx context.Context) error {
 				by = System("driver:agent")
 			}
 			if err := a.Report(ctx, by, x.ID, app.Report{Action: "deliver", Result: as.Result}); err != nil {
+				return err
+			}
+		}
+	}
+	// absences last, so a case can start from work already handed to someone
+	// who is about to be away
+	for _, p := range h.Case.People {
+		if p.Away != "" {
+			if err := a.NoteWorker(ctx, Actor{Worker: WorkerID(p.ID)}, WorkerID(p.ID), workforce.Fact{Dim: workforce.Presence, Value: "away", Detail: p.Away}); err != nil {
 				return err
 			}
 		}

@@ -240,6 +240,13 @@ func (a *App) DescribeObserved(pid ProjectID) string {
 			b.WriteString("\n")
 		}
 	}
+	for _, d := range a.RecentActs(pid, 5) {
+		line := fmt.Sprintf("- 做过 %s：%s（%s）", d.At.Format("01-02 15:04"), d.Action.Describe(), d.Grant)
+		if d.Err != "" {
+			line += " ✗ " + clipRunes(d.Err, 80)
+		}
+		b.WriteString(line + "\n")
+	}
 	for _, w := range a.Watches(pid) {
 		fmt.Fprintf(&b, "- 盯 %s「%s」每 %s：%s；上次 %s", w.ID, w.Name, humanDur(w.Every), w.Probe, w.Last.At.Format("01-02 15:04"))
 		if !w.ChangedAt.IsZero() {

@@ -240,6 +240,10 @@ idle_ttl = "24h"              # retire automatically after this long idle ("0s" 
 # roots = ["~/code/projects"]
 # commands = ["hp * get", "hp * list", "linear issue list"]
 # hosts = []
+# How to hand a message to an existing agent session (act kind=session), besides the
+# built-in claude and codex ones. {session} and {message} are filled in.
+# [observe.sessions]
+# cursor = ["cursor-agent", "-p", "{message}", "--resume", "{session}"]
 
 # L1 judgment layer (TypeSafe Jev): classifies incoming messages, checks
 # replies to colleagues for leaks, and matches people to needs by meaning.

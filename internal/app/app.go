@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/chenhg5/bot-connect/internal/domain/attention"
@@ -29,6 +30,9 @@ type App struct {
 	Learnings LearningChecker // optional check of what an exploration round concluded
 	Sorter    Sorter          // optional: places a pile of things in buckets
 	Prober    Prober          // optional: looks at files, commands, pages (following work the bot doesn't run)
+	onceMu    sync.Mutex
+	onceUsed  map[string]bool // turns whose single confirmation was spent
+	Hands     Hands           // optional: acts outside the bot (commands, file writes, messages to sessions), with the principal's permission
 	Style     Style
 	Log       *slog.Logger
 }

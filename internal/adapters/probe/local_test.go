@@ -63,3 +63,34 @@ func TestRedact(t *testing.T) {
 		}
 	}
 }
+
+func TestLocalDo(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	os.MkdirAll(filepath.Join(root, "p"), 0o755)
+	os.Symlink(outside, filepath.Join(root, "p", "out"))
+	l := &Local{Roots: []string{root}, Sessions: map[string][]string{"echo": {"echo", "got:", "{message}", "for", "{session}"}}}
+	ctx := context.Background()
+	if _, err := l.Do(ctx, observe.Action{Kind: observe.ActWrite, Path: filepath.Join(root, "p", "handoffs", "h.md"), Content: "交接"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := l.Do(ctx, observe.Action{Kind: observe.ActWrite, Path: filepath.Join(root, "p", "handoffs", "h.md"), Content: "\n补充", Append: true}); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(root, "p", "handoffs", "h.md")); string(b) != "交接\n补充" {
+		t.Fatalf("write + append: %q", b)
+	}
+	if _, err := l.Do(ctx, observe.Action{Kind: observe.ActWrite, Path: filepath.Join(root, "p", "out", "x.md"), Content: "x"}); err == nil {
+		t.Fatal("writing through a symlink out of the roots")
+	}
+	if _, err := l.Do(ctx, observe.Action{Kind: observe.ActWrite, Path: filepath.Join(outside, "x.md"), Content: "x"}); err == nil {
+		t.Fatal("writing outside the roots")
+	}
+	out, err := l.Do(ctx, observe.Action{Kind: observe.ActSession, Harness: "echo", Session: "S1", Message: "继续做发版清单", Dir: root})
+	if err != nil || !strings.Contains(out, "got: 继续做发版清单 for S1") {
+		t.Fatalf("session template: %v %q", err, out)
+	}
+	if _, err := l.Do(ctx, observe.Action{Kind: observe.ActSession, Harness: "nope", Session: "S", Message: "m"}); err == nil {
+		t.Fatal("unknown harness")
+	}
+}

@@ -366,6 +366,10 @@ type Observe struct {
 	Roots    []string `toml:"roots"`    // e.g. ["~/code/projects"]
 	Commands []string `toml:"commands"` // e.g. ["hp * get", "hp * list", "linear issue list"]
 	Hosts    []string `toml:"hosts"`    // e.g. ["api.linear.app"]
+	// Sessions: how to hand a message to an existing session per agent CLI
+	// ({session} and {message} are filled in), besides the built-in claude
+	// and codex ones. e.g. cursor = ["cursor-agent", "-p", "{message}", "--resume", "{session}"]
+	Sessions map[string][]string `toml:"sessions"`
 }
 
 // Judge configures the L1 judgment layer.

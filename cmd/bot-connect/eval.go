@@ -179,7 +179,8 @@ func evalCmd() *cli.Command {
 							h, err := sim.New(ctx, cfg, cs)
 							if err != nil {
 								cancel()
-								results = append(results, sim.Result{ID: name, Title: cs.Title, Critical: cs.Critical, Failures: []string{err.Error()}})
+								results = append(results, sim.Result{ID: name, Title: cs.Title, Critical: cs.Critical, Capabilities: cs.Capabilities, Failures: []string{"setup: " + err.Error()}})
+								c.Info("  FAIL (setup)\n    ✗ %v", err)
 								continue
 							}
 							r := h.Run(ctx)

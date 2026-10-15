@@ -45,7 +45,8 @@ type Local struct {
 	Hosts    []string // hosts http probes may fetch
 	Timeout  time.Duration
 	MaxBytes int
-	Extra    func() []string // command patterns allowed at run time
+	Extra    func() []string     // command patterns allowed at run time
+	Sessions map[string][]string // how to reach a session per harness (DefaultSessions otherwise)
 }
 
 func (l *Local) timeout() time.Duration {

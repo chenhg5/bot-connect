@@ -35,6 +35,9 @@ type State struct {
 	Dossiers map[ProjectID]observe.Dossier `json:"dossiers,omitempty"`
 	Watches  map[string]observe.Watch      `json:"watches,omitempty"`
 	Allowed  []string                      `json:"allowed_commands,omitempty"`
+	Granted  []string                      `json:"act_permissions,omitempty"` // standing permissions to act
+	Done     []observe.Done                `json:"acts,omitempty"`            // recent actions (audit)
+	Proposed map[string]ActProposal        `json:"act_proposals,omitempty"`   // actions waiting for the principal
 }
 
 // Contact is a message the brain sent someone through the contact tool.
@@ -53,7 +56,7 @@ func NewState() *State {
 	return &State{Seq: map[string]int{}, Projects: map[ProjectID]portfolio.Project{}, Items: map[ItemID]planning.Item{},
 		Assignments: map[AssignmentID]delegation.Assignment{}, Workers: map[WorkerID]workforce.Worker{},
 		States: map[WorkerID]workforce.WorkerState{}, Signals: map[string]inbox.Signal{}, Contacts: map[string]Contact{}, Escalated: map[string]bool{},
-		Dossiers: map[ProjectID]observe.Dossier{}, Watches: map[string]observe.Watch{}}
+		Dossiers: map[ProjectID]observe.Dossier{}, Watches: map[string]observe.Watch{}, Proposed: map[string]ActProposal{}}
 }
 
 // Fill makes sure every map exists (after loading an older file).
@@ -91,6 +94,9 @@ func (s *State) Fill() {
 	}
 	if s.Watches == nil {
 		s.Watches = f.Watches
+	}
+	if s.Proposed == nil {
+		s.Proposed = map[string]ActProposal{}
 	}
 }
 
