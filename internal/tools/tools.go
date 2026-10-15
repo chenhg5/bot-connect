@@ -598,6 +598,7 @@ func New(env Env) *Registry {
 		addTriage(r, env)
 		addObserve(r, env)
 		addAct(r, env)
+		addToolbox(r, env)
 	}
 	sort.Strings(r.names)
 	return r

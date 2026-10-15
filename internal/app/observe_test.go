@@ -189,3 +189,56 @@ func TestConfirmationsBindToActions(t *testing.T) {
 		t.Fatalf("audit says which approval: %+v", got[0])
 	}
 }
+
+type codeProber struct{}
+
+func (codeProber) Probe(_ context.Context, p observe.Probe) (string, error) {
+	if p.Kind == observe.ToolProbe {
+		if p.Code == "" {
+			return "", errors.New("unresolved")
+		}
+		return "ran " + observe.CodeHash(p.Code), nil
+	}
+	return "x", nil
+}
+
+func TestToolboxNeedsApprovalOfTheCode(t *testing.T) {
+	r := newRig(t, jsonstore.Memory())
+	a := r.app
+	a.Prober = codeProber{}
+	a.Hands = &fakeHands{}
+	tool := observe.Probe{Kind: observe.ToolProbe, Target: "backlog"}
+	tl, err := a.AddTool(ctx, principal, "P3", "backlog", "counts open items", observe.ToolLook, "python3", "print(1)")
+	must(t, err)
+	if _, err := a.Look(ctx, principal, tool); err == nil {
+		t.Fatal("not approved yet")
+	}
+	if _, _, err := a.AddWatch(ctx, principal, "P3", "存量", tool, time.Hour, 0, ""); err == nil {
+		t.Fatal("can't watch an unapproved tool")
+	}
+	if _, err := a.ApproveTool(ctx, Actor{Role: RoleAdmin}, "backlog", tl.Hash); err == nil {
+		t.Fatal("only the principal approves")
+	}
+	if _, err := a.ApproveTool(ctx, principal, "backlog", "0000"); err == nil {
+		t.Fatal("approving a version that isn't the current code")
+	}
+	_, err = a.ApproveTool(ctx, principal, "backlog", tl.Hash)
+	must(t, err)
+	out, err := a.Look(ctx, principal, tool)
+	if err != nil || out != "ran "+tl.Hash {
+		t.Fatalf("approved code runs: %v %q", err, out)
+	}
+	_, _, err = a.AddWatch(ctx, principal, "P3", "存量", tool, time.Hour, 0, "")
+	must(t, err)
+	_, err = a.AddTool(ctx, principal, "P3", "backlog", "counts open items", observe.ToolLook, "python3", "print(2)")
+	must(t, err)
+	if _, err := a.Look(ctx, principal, tool); err == nil {
+		t.Fatal("changed code needs approval again")
+	}
+	if _, err := a.Act(ctx, principal, "P3", observe.Action{Kind: observe.ActTool, Program: "backlog"}, true, "S1"); err == nil {
+		t.Fatal("a look tool is not an action")
+	}
+	if got, _ := a.Tool("backlog"); got.Uses != 2 {
+		t.Fatalf("uses counted: %d", got.Uses)
+	}
+}

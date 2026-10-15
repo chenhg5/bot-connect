@@ -117,6 +117,10 @@ func (a *App) Act(ctx context.Context, by Actor, pid ProjectID, act observe.Acti
 }
 
 func (a *App) do(ctx context.Context, by Actor, pid ProjectID, act observe.Action, grant string) (string, error) {
+	act, err := a.resolveAction(ctx, act)
+	if err != nil {
+		return "", err
+	}
 	if act.Kind == observe.ActSession {
 		go func() {
 			out, err := a.Hands.Do(context.Background(), act)

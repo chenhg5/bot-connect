@@ -86,3 +86,29 @@ func TestPermits(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestToolApprovalFollowsTheCode(t *testing.T) {
+	now := time.Now()
+	tl, err := NewTool("pr-backlog", "counts open PRs and issues", ToolLook, "python3", "print(1)", "P1", now, Actor{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tl.Runnable() || tl.Status() != "waiting for approval" {
+		t.Fatal("new code waits for approval")
+	}
+	if err := tl.Approve("deadbeef", now); err == nil {
+		t.Fatal("approving code you didn't see")
+	}
+	if err := tl.Approve(tl.Hash, now); err != nil || !tl.Runnable() {
+		t.Fatal(err)
+	}
+	if err := tl.Revise("counts open PRs and issues", ToolLook, "python3", "print(2)", now); err != nil || tl.Runnable() {
+		t.Fatalf("changed code needs approval again: %v %s", err, tl.Status())
+	}
+	if _, err := NewTool("Bad Name", "x", ToolLook, "python3", "x", "", now, Actor{}); err == nil {
+		t.Fatal("name")
+	}
+	if _, err := NewTool("ok-name", "x", ToolLook, "ruby", "x", "", now, Actor{}); err == nil {
+		t.Fatal("interpreter")
+	}
+}

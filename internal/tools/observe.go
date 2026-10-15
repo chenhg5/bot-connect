@@ -15,8 +15,8 @@ import (
 
 func probeSchema() props {
 	return props{
-		"kind":   enum("file = read a file; dir = list a directory tree with modification times; cmd = an allowed read-only command; http = GET an allowed host", "file", "dir", "cmd", "http"),
-		"target": str("file / directory path, URL, or the command's program (gh, git, hp, linear…)"),
+		"kind":   enum("file = read a file; dir = list a directory tree with modification times; cmd = an allowed read-only command; http = GET an allowed host; tool = an approved look tool from the toolbox", "file", "dir", "cmd", "http", "tool"),
+		"target": str("file / directory path, URL, the command's program (gh, git, hp, linear…), or the tool's name"),
 		"args":   arr("cmd: arguments, one per entry (no shell)"),
 		"dir":    str("cmd: working directory (inside the open roots)"),
 		"depth":  num("dir: how deep to list (default 2, max 4)"),
@@ -268,6 +268,74 @@ func addAct(r *Registry, env Env) {
 				return "", domainErr(err)
 			}
 			return "permission recorded: " + s(a, "pattern") + "\nall standing permissions: " + strings.Join(pm.Grants(), "; "), nil
+		},
+	})
+}
+
+func addToolbox(r *Registry, env Env) {
+	pm := env.App
+	r.add(Tool{
+		Name: "toolbox",
+		Description: "Your toolbox: small scripts that make a repeated way of looking (or acting) one call. When you keep assembling the same view by hand — " +
+			"counting a backlog across several commands, summarising a folder of worklogs — have an agent write a script (sh / bash / python3; it gets the arguments you pass, " +
+			"runs in a project folder, prints its result), then add it here. It can't run until the principal approves exactly that code: show them (show) and record " +
+			"their approval with approve in the turn they agree. Look tools are used with look / watch (kind=tool), act tools with act (kind=tool). Changing the code needs approval again.",
+		PrincipalOnly: true,
+		Schema: obj(props{
+			"action":      enum("", "add", "list", "show", "approve", "retire"),
+			"name":        str("tool name: lowercase, digits, dashes (pr-backlog)"),
+			"description": str("add: what it does, its arguments, what it prints"),
+			"kind":        enum("add: look = reads and reports; act = changes something", "look", "act"),
+			"interpreter": enum("add", "python3", "bash", "sh"),
+			"code":        str("add: the script, exactly as the agent delivered it"),
+			"project":     str("add: the project it was made for"),
+			"version":     str("approve: the version (hash) the principal saw"),
+		}, "action"),
+		Handler: func(ctx context.Context, tc TurnContext, a map[string]any) (string, error) {
+			by := actorOf(pm, tc)
+			name := s(a, "name")
+			switch s(a, "action") {
+			case "add":
+				var pid ProjectID
+				if s(a, "project") != "" {
+					pid = projectArg(pm, a)
+				}
+				t, err := pm.AddTool(ctx, by, pid, name, s(a, "description"), observe.ToolKind(s(a, "kind")), s(a, "interpreter"), s(a, "code"))
+				if err != nil {
+					return "", domainErr(err)
+				}
+				return app.DescribeTool(t) + "\n给委托人看这段代码（版本 " + t.Hash + "），他同意后在那一轮用 approve 记下。", nil
+			case "list":
+				var b strings.Builder
+				for _, t := range pm.Tools() {
+					fmt.Fprintf(&b, "- %s（%s，%s，%s）：%s；用过 %d 次\n", t.Name, t.Kind, t.Hash, t.Status(), clipT(t.Description, 100), t.Uses)
+				}
+				if b.Len() == 0 {
+					return "(the toolbox is empty)", nil
+				}
+				return b.String(), nil
+			case "show":
+				t, ok := pm.Tool(name)
+				if !ok {
+					return "", &ToolError{KindNotFound, "no tool " + name}
+				}
+				return app.DescribeTool(t), nil
+			case "approve":
+				if !principalSpoke(pm, tc) {
+					return "", &ToolError{KindPermission, "only in the turn where the principal approved this code"}
+				}
+				t, err := pm.ApproveTool(ctx, by, name, s(a, "version"))
+				if err != nil {
+					return "", domainErr(err)
+				}
+				return fmt.Sprintf("%s 版本 %s 已批准，可以用了。", t.Name, t.Hash), nil
+			case "retire":
+				if err := pm.RetireTool(ctx, by, name); err != nil {
+					return "", domainErr(err)
+				}
+				return "retired " + name, nil
+			}
+			return "", &ToolError{KindInvalid, "action: add | list | show | approve | retire"}
 		},
 	})
 }

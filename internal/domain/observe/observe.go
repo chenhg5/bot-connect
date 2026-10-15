@@ -27,6 +27,8 @@ const (
 	Dir  Kind = "dir"  // list a directory tree (names, sizes, modification times)
 	Cmd  Kind = "cmd"  // run an allowed read-only command
 	HTTP Kind = "http" // GET a page or an API
+	// ToolProbe runs an approved look tool from the toolbox (target = its name).
+	ToolProbe Kind = "tool"
 )
 
 // Probe is one way to look at something.
@@ -36,6 +38,9 @@ type Probe struct {
 	Args   []string `json:"args,omitempty"` // command arguments
 	Dir    string   `json:"dir,omitempty"`  // command working directory
 	Depth  int      `json:"depth,omitempty"`
+	// Filled in when a tool probe is resolved, never stored.
+	Interpreter string `json:"-"`
+	Code        string `json:"-"`
 }
 
 func (p Probe) Validate() error {
@@ -48,14 +53,20 @@ func (p Probe) Validate() error {
 		if strings.TrimSpace(p.Target) == "" {
 			return Invalid("a command probe needs the program (target) and its args")
 		}
+	case ToolProbe:
+		if strings.TrimSpace(p.Target) == "" {
+			return Invalid("a tool probe needs the tool's name (target)")
+		}
 	default:
-		return Invalid("unknown probe kind %q (file, dir, cmd, http)", p.Kind)
+		return Invalid("unknown probe kind %q (file, dir, cmd, http, tool)", p.Kind)
 	}
 	return nil
 }
 
 func (p Probe) String() string {
 	switch p.Kind {
+	case ToolProbe:
+		return strings.TrimSpace("工具 " + p.Target + " " + strings.Join(p.Args, " "))
 	case Cmd:
 		s := p.Target + " " + strings.Join(p.Args, " ")
 		if p.Dir != "" {

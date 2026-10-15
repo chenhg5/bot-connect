@@ -261,9 +261,28 @@ func (h *Harness) check(ck Check, msgs []Msg, calls []ToolCall, before map[strin
 		if msg := h.checkFile(ck); msg != "" {
 			return msg + why
 		}
+	case "toolbox":
+		approved := 0
+		for _, t := range h.App.Tools() {
+			if t.Runnable() {
+				approved++
+			}
+		}
+		if ck.Count != nil && approved != *ck.Count {
+			return fmt.Sprintf("toolbox: %d approved tools, want %d%s", approved, *ck.Count, why)
+		}
+		if len(h.App.Tools()) < ck.Min {
+			return fmt.Sprintf("toolbox: %d tools, want at least %d%s", len(h.App.Tools()), ck.Min, why)
+		}
 	case "watches":
-		if n := len(h.App.Watches("")); n < max(ck.Min, 1) {
-			return fmt.Sprintf("watches: %d, want at least %d%s", n, max(ck.Min, 1), why)
+		n := 0
+		for _, w := range h.App.Watches("") {
+			if ck.Kind == "" || string(w.Probe.Kind) == ck.Kind {
+				n++
+			}
+		}
+		if n < max(ck.Min, 1) {
+			return fmt.Sprintf("watches (kind %q): %d, want at least %d%s", ck.Kind, n, max(ck.Min, 1), why)
 		}
 	case "plan", "no_plan":
 		if msg := h.checkPlan(ck); msg != "" {

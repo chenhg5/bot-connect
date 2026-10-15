@@ -211,7 +211,7 @@ func wireJudge(a *app.App, h *hub.Hub, bc config.BotConfig, jc config.Judge, cla
 // WireObserve gives the app its eyes: a local prober limited to the
 // configured roots, read-only commands and hosts, plus the command patterns
 // the principal allows at run time.
-func WireObserve(a *app.App, oc config.Observe) {
+func WireObserve(a *app.App, oc config.Observe, toolDir string) {
 	if len(oc.Roots) == 0 {
 		return
 	}
@@ -220,6 +220,6 @@ func WireObserve(a *app.App, oc config.Observe) {
 		roots[i] = config.ExpandHome(r)
 	}
 	l := &probe.Local{Roots: roots, Commands: append(append([]string(nil), probe.DefaultCommands...), oc.Commands...),
-		Hosts: oc.Hosts, Extra: a.AllowedCommands, Sessions: oc.Sessions}
+		Hosts: oc.Hosts, Extra: a.AllowedCommands, Sessions: oc.Sessions, ToolDir: toolDir}
 	a.Prober, a.Hands = l, l
 }

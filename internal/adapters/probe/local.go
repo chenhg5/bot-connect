@@ -47,6 +47,7 @@ type Local struct {
 	MaxBytes int
 	Extra    func() []string     // command patterns allowed at run time
 	Sessions map[string][]string // how to reach a session per harness (DefaultSessions otherwise)
+	ToolDir  string              // where toolbox scripts are written to run
 }
 
 func (l *Local) timeout() time.Duration {
@@ -81,6 +82,8 @@ func (l *Local) Probe(ctx context.Context, p observe.Probe) (string, error) {
 		out, err = l.cmd(ctx, p)
 	case observe.HTTP:
 		out, err = l.http(ctx, p.Target)
+	case observe.ToolProbe:
+		return l.runScript(ctx, p.Interpreter, p.Code, p.Args, p.Dir, l.timeout())
 	}
 	return l.clip(Redact(out)), err
 }

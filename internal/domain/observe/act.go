@@ -20,6 +20,7 @@ const (
 	ActCmd     ActKind = "cmd"     // run a program with arguments (no shell)
 	ActWrite   ActKind = "write"   // write a file (append or replace)
 	ActSession ActKind = "session" // hand a message to an existing agent session
+	ActTool    ActKind = "tool"    // run an approved act tool from the toolbox (program = its name)
 )
 
 // Action is one thing the bot does outside itself.
@@ -34,6 +35,9 @@ type Action struct {
 	Harness string   `json:"harness,omitempty"` // session: which agent CLI (claude, codex, …)
 	Session string   `json:"session,omitempty"` // session: its id
 	Message string   `json:"message,omitempty"` // session: what to tell it
+	// Filled in when a tool action is resolved, never stored.
+	Interpreter string `json:"-"`
+	Code        string `json:"-"`
 }
 
 // ContentLimit bounds what one write may put in a file.
@@ -56,8 +60,12 @@ func (a Action) Validate() error {
 		if a.Harness == "" || a.Session == "" || strings.TrimSpace(a.Message) == "" {
 			return Invalid("handing to a session needs harness, session and message")
 		}
+	case ActTool:
+		if a.Program == "" {
+			return Invalid("a tool action needs the tool's name (program)")
+		}
 	default:
-		return Invalid("unknown action %q (cmd, write, session)", a.Kind)
+		return Invalid("unknown action %q (cmd, write, session, tool)", a.Kind)
 	}
 	return nil
 }
@@ -79,6 +87,8 @@ func (a Action) Describe() string {
 		return fmt.Sprintf("%s %s（%d 字）", verb, a.Path, len([]rune(a.Content)))
 	case ActSession:
 		return fmt.Sprintf("给 %s 会话 %s 递话：%s", a.Harness, a.Session, clipRunes(a.Message, 80))
+	case ActTool:
+		return strings.TrimSpace("用工具 " + a.Program + " " + strings.Join(a.Args, " "))
 	}
 	return string(a.Kind)
 }
@@ -93,6 +103,8 @@ func (a Action) Key() []string {
 		return []string{"write", filepath.Clean(a.Path)}
 	case ActSession:
 		return []string{"session", a.Harness, a.Session}
+	case ActTool:
+		return append([]string{"tool", a.Program}, a.Args...)
 	}
 	return nil
 }
@@ -173,6 +185,10 @@ func ValidPermission(pattern string) error {
 	case "session":
 		if len(f) < 3 {
 			return Invalid("\"session <harness> <session id or *>\"")
+		}
+	case "tool":
+		if f[1] == "*" {
+			return Invalid("name the tool (\"tool <name> *\")")
 		}
 	default:
 		return Invalid("unknown kind %q (cmd, write, session)", f[0])

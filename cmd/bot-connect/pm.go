@@ -63,7 +63,7 @@ func setupPM(cfg *config.Config, bc config.BotConfig, h *hub.Hub, workers *worke
 		}),
 	}})
 	claims := assemble.WirePM(a, h, bc, cfg.Judge)
-	assemble.WireObserve(a, cfg.Observe)
+	assemble.WireObserve(a, cfg.Observe, filepath.Join(bc.Dir, "toolbox"))
 
 	ctx := context.Background()
 	if err := a.EnsureOrg(ctx, firstNonEmpty(cfg.Org.Title, "公司")); err != nil {

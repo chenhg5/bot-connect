@@ -94,3 +94,18 @@ func TestLocalDo(t *testing.T) {
 		t.Fatal("unknown harness")
 	}
 }
+
+func TestToolScripts(t *testing.T) {
+	root := t.TempDir()
+	os.WriteFile(filepath.Join(root, "issues.json"), []byte(`[{"state":"Todo"},{"state":"Done"},{"state":"Todo"}]`), 0o644)
+	l := &Local{Roots: []string{root}, ToolDir: t.TempDir()}
+	ctx := context.Background()
+	code := "import json,sys,collections\nc=collections.Counter(x['state'] for x in json.load(open(sys.argv[1])))\nprint(dict(sorted(c.items())))\nprint('token=ghp_abcdefghijklmnopqrstuvwxyz12')\n"
+	out, err := l.Probe(ctx, observe.Probe{Kind: observe.ToolProbe, Target: "state-count", Args: []string{"issues.json"}, Interpreter: "python3", Code: code})
+	if err != nil || !strings.Contains(out, "'Todo': 2") || strings.Contains(out, "ghp_abc") {
+		t.Fatalf("script ran inside the root, output masked: %v %q", err, out)
+	}
+	if _, err := l.Probe(ctx, observe.Probe{Kind: observe.ToolProbe, Target: "state-count", Interpreter: "python3"}); err == nil {
+		t.Fatal("no approved code, no run")
+	}
+}

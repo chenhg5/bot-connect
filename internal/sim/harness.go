@@ -199,7 +199,7 @@ func New(ctx context.Context, cfg *config.Config, c Case) (*Harness, error) {
 		if h.fixture, err = copyFixture(c.Fixture, filepath.Join(dir, "projects")); err != nil {
 			return nil, err
 		}
-		assemble.WireObserve(h.App, config.Observe{Roots: []string{filepath.Join(dir, "projects")}})
+		assemble.WireObserve(h.App, config.Observe{Roots: []string{filepath.Join(dir, "projects")}}, filepath.Join(dir, "toolbox"))
 	}
 	h.judge = assemble.NewJudge(cfg.Judge)
 

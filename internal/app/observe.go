@@ -31,6 +31,10 @@ func (a *App) Look(ctx context.Context, by Actor, p observe.Probe) (string, erro
 	if a.Prober == nil {
 		return "", Forbidden("looking is not set up ([observe] roots)")
 	}
+	p, err := a.resolveProbe(ctx, p)
+	if err != nil {
+		return "", err
+	}
 	return a.Prober.Probe(ctx, p)
 }
 
@@ -73,7 +77,11 @@ func (a *App) AddWatch(ctx context.Context, by Actor, pid ProjectID, name string
 	if a.Prober == nil {
 		return observe.Watch{}, "", Forbidden("looking is not set up ([observe] roots)")
 	}
-	text, perr := a.Prober.Probe(ctx, p)
+	rp, perr := a.resolveProbe(ctx, p)
+	text := ""
+	if perr == nil {
+		text, perr = a.Prober.Probe(ctx, rp)
+	}
 	if perr != nil {
 		return observe.Watch{}, text, fmt.Errorf("the probe doesn't work, so nothing would be watched: %w", perr)
 	}
@@ -179,7 +187,11 @@ func (a *App) runWatches(ctx context.Context) {
 		due = due[:MaxWatchesPerTick]
 	}
 	for _, w := range due {
-		text, err := a.Prober.Probe(ctx, w.Probe)
+		rp, err := a.resolveProbe(ctx, w.Probe)
+		text := ""
+		if err == nil {
+			text, err = a.Prober.Probe(ctx, rp)
+		}
 		o := observe.Observe(text, err, now)
 		var finding observe.Finding
 		var prev, cur observe.Watch

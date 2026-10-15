@@ -34,6 +34,8 @@ func (l *Local) Do(ctx context.Context, a observe.Action) (string, error) {
 		ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 		defer cancel()
 		return l.run(ctx, a.Program, a.Args, a.Dir)
+	case observe.ActTool:
+		return l.runScript(ctx, a.Interpreter, a.Code, a.Args, a.Dir, 2*time.Minute)
 	case observe.ActSession:
 		tpl, ok := l.Sessions[a.Harness]
 		if !ok {
@@ -103,16 +105,21 @@ func (l *Local) run(ctx context.Context, program string, args []string, dir stri
 	if strings.ContainsAny(program, `/\`) {
 		return "", Forbidden("give the program by name, not by path")
 	}
+	bin, err := exec.LookPath(program)
+	if err != nil {
+		return "", NotFound("%s is not installed", program)
+	}
+	return l.exec(ctx, bin, args, dir)
+}
+
+// exec runs a resolved binary in a directory inside the roots.
+func (l *Local) exec(ctx context.Context, bin string, args []string, dir string) (string, error) {
 	if dir == "" && len(l.Roots) > 0 {
 		dir = l.Roots[0]
 	}
 	real, err := l.Inside(dir)
 	if err != nil {
 		return "", err
-	}
-	bin, err := exec.LookPath(program)
-	if err != nil {
-		return "", NotFound("%s is not installed", program)
 	}
 	c := exec.CommandContext(ctx, bin, args...)
 	c.Dir = real
@@ -125,7 +132,7 @@ func (l *Local) run(ctx context.Context, program string, args []string, dir stri
 		return text, fmt.Errorf("timed out")
 	}
 	if err != nil {
-		return text, fmt.Errorf("%s: %v", program, err)
+		return text, fmt.Errorf("%s: %v", filepath.Base(bin), err)
 	}
 	return text, nil
 }
