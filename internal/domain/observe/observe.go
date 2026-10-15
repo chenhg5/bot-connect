@@ -271,3 +271,48 @@ func Diff(before, after string, max int) string {
 	}
 	return out
 }
+
+// journalHead starts the dossier's progress log.
+const journalHead = "## 进展记录"
+
+// LineLimit bounds one progress line.
+const LineLimit = 500
+
+// Append adds a dated line to the dossier's progress log, dropping the
+// oldest log lines when the dossier would grow past its limit (the
+// handbook part above the log is never touched).
+func (d *Dossier) Append(line string, now time.Time) error {
+	line = strings.Join(strings.Fields(line), " ")
+	if line == "" {
+		return Invalid("what happened? (one line)")
+	}
+	if utf8.RuneCountInString(line) > LineLimit {
+		return Invalid("keep it to one line (under %d characters); the handbook itself is rewritten with write", LineLimit)
+	}
+	body, log := d.Text, ""
+	if i := strings.Index(d.Text, journalHead); i >= 0 {
+		body, log = strings.TrimRight(d.Text[:i], "\n"), strings.TrimPrefix(d.Text[i:], journalHead)
+	}
+	var lines []string
+	for _, l := range strings.Split(log, "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			lines = append(lines, l)
+		}
+	}
+	lines = append(lines, "- "+now.Format("01-02 15:04")+" "+line)
+	compose := func() string {
+		head := strings.TrimSpace(body)
+		if head != "" {
+			head += "\n\n"
+		}
+		return head + journalHead + "\n" + strings.Join(lines, "\n")
+	}
+	for utf8.RuneCountInString(compose()) > DossierLimit && len(lines) > 1 {
+		lines = lines[1:]
+	}
+	if utf8.RuneCountInString(compose()) > DossierLimit {
+		return Invalid("the handbook leaves no room for the log; shorten it with write")
+	}
+	d.Text, d.UpdatedAt = compose(), now
+	return nil
+}

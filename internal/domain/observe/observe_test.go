@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	. "github.com/chenhg5/bot-connect/internal/domain/shared"
 )
@@ -110,5 +111,30 @@ func TestToolApprovalFollowsTheCode(t *testing.T) {
 	}
 	if _, err := NewTool("ok-name", "x", ToolLook, "ruby", "x", "", now, Actor{}); err == nil {
 		t.Fatal("interpreter")
+	}
+}
+
+func TestDossierAppend(t *testing.T) {
+	now := time.Date(2026, 10, 16, 9, 0, 0, 0, time.UTC)
+	d := Dossier{Text: "# 手册\n目标：发版"}
+	if err := d.Append("派 researcher 调研发版节奏（A1）", now); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Append("A1 交付，下一步起草方案", now.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(d.Text, "# 手册\n目标：发版") || strings.Count(d.Text, "## 进展记录") != 1 || !strings.Contains(d.Text, "- 10-16 10:00 A1 交付") {
+		t.Fatalf("appended under one log, handbook untouched:\n%s", d.Text)
+	}
+	for i := 0; i < 200; i++ {
+		if err := d.Append(strings.Repeat("进展", 20), now.Add(time.Duration(i)*time.Minute)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if utf8.RuneCountInString(d.Text) > DossierLimit || !strings.HasPrefix(d.Text, "# 手册") || strings.Contains(d.Text, "派 researcher") {
+		t.Fatalf("oldest lines drop, the handbook stays: %d chars", utf8.RuneCountInString(d.Text))
+	}
+	if err := d.Append(strings.Repeat("长", LineLimit+1), now); err == nil {
+		t.Fatal("one line")
 	}
 }

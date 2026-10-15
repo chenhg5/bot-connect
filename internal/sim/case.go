@@ -177,6 +177,8 @@ type Step struct {
 //	tool           Called were all used, NotCalled none, during the step (or the case)
 //	unchanged      no item or assignment changed status during the step
 //	latency        the first message after the step began came within Max
+//	no_stall       open work is waiting on someone or has a wakeup to come back to it
+//	attention      at most Count messages to the principal (in the step, or the whole case under [[expect]])
 //	plan           a project has a plan matching Kind (goal|task) / Stage / Feasibility, with at least Min
 //	               nodes, and (if set) Parallel / AgentsFirst / Compounding hold
 //	no_plan        no project has a plan

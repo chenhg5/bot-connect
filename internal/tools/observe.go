@@ -53,12 +53,13 @@ func addObserve(r *Registry, env Env) {
 		Name: "dossier",
 		Description: "Your handbook for following one project (you write it, it is shown whenever you work on the project): its goals and when each is done; " +
 			"where the truth lives and how to read it (sources: the exact probes); who or what does the work and how to reach them; the rhythm; what counts as progress and as a risk; " +
-			"what the principal wants to hear about. get to read; write to replace (keep it a handbook: under 6000 characters).",
+			"what the principal wants to hear about. get to read; write to replace (keep it a handbook: under 6000 characters); " +
+			"append adds one dated line to its progress log (what you did, what's next) without touching the rest — oldest log lines drop when it's full.",
 		PrincipalOnly: true,
 		Schema: obj(props{
-			"action":  enum("", "get", "write"),
+			"action":  enum("", "get", "write", "append"),
 			"project": str("project id or title"),
-			"text":    str("write: the whole handbook (markdown)"),
+			"text":    str("write: the whole handbook (markdown); append: one line"),
 			"sources": map[string]any{"type": "array", "description": "write: where the truth lives", "items": obj(props{
 				"name": str("what it is (目标文件, 开着的 PR, 工作日志…)"), "what": str("what it tells you"),
 				"kind": probeSchema()["kind"], "target": probeSchema()["target"], "args": probeSchema()["args"], "dir": probeSchema()["dir"],
@@ -88,8 +89,13 @@ func addObserve(r *Registry, env Env) {
 					return "", domainErr(err)
 				}
 				return fmt.Sprintf("dossier of %s saved (%d characters, %d sources). Next: watch the sources that show progress.", pid, len([]rune(d.Text)), len(d.Sources)), nil
+			case "append":
+				if err := pm.AppendDossier(ctx, actorOf(pm, tc), pid, s(a, "text")); err != nil {
+					return "", domainErr(err)
+				}
+				return "logged.", nil
 			}
-			return "", &ToolError{KindInvalid, "action: get | write"}
+			return "", &ToolError{KindInvalid, "action: get | write | append"}
 		},
 	})
 	sch := probeSchema()

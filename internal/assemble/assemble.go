@@ -71,7 +71,10 @@ func WirePM(a *app.App, h *hub.Hub, bc config.BotConfig, jc config.Judge) *Claim
 	for k, v := range bc.Wake.Modes() {
 		a.Policy.Modes[k] = v
 	}
-	a.Policy.Hours, a.Policy.Days, a.Policy.DailyBudget = bc.Wake.Hours, bc.Wake.Days, bc.Wake.DailyBudget
+	a.Policy.Hours, a.Policy.Days = bc.Wake.Hours, bc.Wake.Days
+	if bc.Wake.DailyBudget > 0 {
+		a.Policy.DailyBudget = bc.Wake.DailyBudget
+	}
 	if bc.Wake.BatchEvery.Duration > 0 {
 		a.Policy.BatchEvery = bc.Wake.BatchEvery.Duration
 	}

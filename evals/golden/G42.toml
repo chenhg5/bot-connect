@@ -1,0 +1,43 @@
+id = "G42"
+title = "自主推进：两件事交给 bot，它自己推、不停摆，只在要拍板时找人"
+critical = true
+capabilities = ["planning", "pm", "state", "communication"]
+milestone = "autonomy"
+fixture = "hp-style"
+now = "2026-10-16 10:00"
+
+[[agents]]
+id = "researcher"
+description = "研究型 agent：调研开源项目、竞品和资料，写分析"
+capabilities = ["web:read"]
+
+[[agents]]
+id = "writer"
+description = "文档 agent：写清单、文档和说明"
+capabilities = ["docs:write"]
+
+[[steps]]
+say = "两件事交给你，你自己推进，只有需要我拍板的再找我：1）给 {fixture} 这个项目（paper-lantern）写一份发版清单；2）调研 3 个同类静态博客生成器的发版节奏，给 paper-lantern 定一个建议节奏。"
+timeout = "6m"
+  [[steps.expect]]
+  type = "assignment"
+  worker = "researcher|writer"
+  why = "自己把活派出去，不用委托人再说"
+
+[[steps]]
+deliver = "researcher"
+result = "调研结论：Hugo 大约每 2–4 周发一个小版本，Jekyll 每季度左右一个小版本，Eleventy 约每 6–8 周。小项目常见做法是每月固定一次小版本、有安全问题随时补丁。建议 paper-lantern 每月第一周发版，紧急修复走补丁版本。"
+timeout = "6m"
+
+[[steps]]
+advance = "26h"
+timeout = "6m"
+
+[[expect]]
+type = "no_stall"
+why = "还没做完的事要么在等人，要么有唤醒回来接着推"
+
+[[expect]]
+type = "attention"
+count = 6
+why = "一天多里给委托人的消息不超过 6 条（第一条回复和真正要他拍板的事）"

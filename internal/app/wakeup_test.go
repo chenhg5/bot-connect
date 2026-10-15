@@ -8,8 +8,10 @@ import (
 
 	"github.com/chenhg5/bot-connect/internal/adapters/store/jsonstore"
 	"github.com/chenhg5/bot-connect/internal/app"
+	"github.com/chenhg5/bot-connect/internal/domain/delegation"
 	"github.com/chenhg5/bot-connect/internal/domain/inbox"
 	"github.com/chenhg5/bot-connect/internal/domain/observe"
+	"github.com/chenhg5/bot-connect/internal/domain/planning"
 	. "github.com/chenhg5/bot-connect/internal/domain/shared"
 )
 
@@ -176,5 +178,20 @@ func TestRoutinesFromConfig(t *testing.T) {
 	must(t, a.SyncRoutines(ctx, nil, nil))
 	if len(a.Wakeups()) != 0 {
 		t.Fatal("removed from the configuration, ended")
+	}
+}
+
+func TestProjectActivityIsDerived(t *testing.T) {
+	r := newRig(t, jsonstore.Memory())
+	a := r.app
+	it, err := a.PlanItem(ctx, principal, planning.Spec{Project: "P3", Title: "查日志"})
+	must(t, err)
+	_, err = a.Delegate(ctx, principal, app.DelegateSpec{Item: it.ID, Worker: "ops-reader", Brief: delegation.Brief{Goal: "查 view_media 的 500"}})
+	must(t, err)
+	_, err = a.ScheduleWakeup(ctx, principal, app.WakeupSpec{Note: "看 ops-reader 的结论", When: "2h", Project: "P3"})
+	must(t, err)
+	out := a.DescribeObserved("P3")
+	if !strings.Contains(out, "查 view_media 的 500") || !strings.Contains(out, "看 ops-reader 的结论") {
+		t.Fatalf("what happened is visible without anyone writing it down:\n%s", out)
 	}
 }

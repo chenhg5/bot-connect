@@ -68,6 +68,26 @@ func (a *App) WriteDossier(ctx context.Context, by Actor, pid ProjectID, text st
 	return out, err
 }
 
+// AppendDossier adds a dated line to a project's progress log.
+func (a *App) AppendDossier(ctx context.Context, by Actor, pid ProjectID, line string) error {
+	if err := requirePrivileged(by, "write a dossier"); err != nil {
+		return err
+	}
+	_, err := a.commit(ctx, func(s *State) ([]Event, error) {
+		if _, ok := s.Projects[pid]; !ok {
+			return nil, NotFound("no project %s", pid)
+		}
+		d := s.Dossiers[pid]
+		d.Project = pid
+		if err := d.Append(line, a.now()); err != nil {
+			return nil, err
+		}
+		s.Dossiers[pid] = d
+		return nil, nil
+	})
+	return err
+}
+
 // AddWatch starts watching a source for a project. The first look happens
 // now, so a probe that doesn't work is found out at once.
 func (a *App) AddWatch(ctx context.Context, by Actor, pid ProjectID, name string, p observe.Probe, every, stale time.Duration, expect string) (observe.Watch, string, error) {
@@ -252,6 +272,7 @@ func (a *App) DescribeObserved(pid ProjectID) string {
 			b.WriteString("\n")
 		}
 	}
+	b.WriteString(a.recentActivity(pid, 8))
 	for _, d := range a.RecentActs(pid, 5) {
 		line := fmt.Sprintf("- 做过 %s：%s（%s）", d.At.Format("01-02 15:04"), d.Action.Describe(), d.Grant)
 		if d.Err != "" {
@@ -270,4 +291,45 @@ func (a *App) DescribeObserved(pid ProjectID) string {
 		b.WriteString("\n")
 	}
 	return strings.TrimRight(b.String(), "\n")
+}
+
+// recentActivity is what has been happening on a project, from what is
+// recorded anyway (assignments and wakeups), so picking a goal up again
+// doesn't depend on anyone having written it down.
+func (a *App) recentActivity(pid ProjectID, n int) string {
+	type line struct {
+		at   time.Time
+		text string
+	}
+	var ls []line
+	a.Store.Read(func(s *State) {
+		for _, as := range s.Assignments {
+			if as.Project != pid {
+				continue
+			}
+			t := fmt.Sprintf("%s %s→%s「%s」%s", as.ID, as.Kind, as.Worker, oneLine(as.Brief.Goal, 40), as.Status)
+			if as.Question != "" {
+				t += "，在问：" + oneLine(as.Question, 40)
+			}
+			ls = append(ls, line{as.UpdatedAt, t})
+		}
+		for _, w := range s.Wakeups {
+			if w.Project == pid && !w.Done {
+				ls = append(ls, line{w.CreatedAt, fmt.Sprintf("唤醒 %s 定在 %s：%s", w.ID, w.Next.Format("01-02 15:04"), oneLine(w.Note, 60))})
+			}
+		}
+	})
+	if len(ls) == 0 {
+		return ""
+	}
+	sort.Slice(ls, func(i, j int) bool { return ls[i].at.After(ls[j].at) })
+	if len(ls) > n {
+		ls = ls[:n]
+	}
+	var b strings.Builder
+	b.WriteString("最近在发生的（系统记录）：\n")
+	for _, l := range ls {
+		b.WriteString("- " + l.at.Format("01-02 15:04") + " " + l.text + "\n")
+	}
+	return b.String()
 }

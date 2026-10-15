@@ -261,6 +261,34 @@ func (h *Harness) check(ck Check, msgs []Msg, calls []ToolCall, before map[strin
 		if msg := h.checkFile(ck); msg != "" {
 			return msg + why
 		}
+	case "no_stall":
+		// work left must be waiting on someone or have a wakeup to come back to it
+		open, waiting := 0, 0
+		h.App.Store.Read(func(s *app.State) {
+			for _, it := range s.Items {
+				if it.Open() && !it.Ask {
+					open++
+				}
+			}
+			for _, a := range s.Assignments {
+				if a.Open() {
+					waiting++
+				}
+			}
+		})
+		if open > 0 && waiting == 0 && len(h.App.Wakeups()) == 0 {
+			return fmt.Sprintf("no_stall: %d open items, nothing assigned and no wakeup — the work has stalled%s", open, why)
+		}
+	case "attention":
+		n := 0
+		for _, m := range msgs {
+			if m.Chat == principalChat {
+				n++
+			}
+		}
+		if ck.Count != nil && n > *ck.Count {
+			return fmt.Sprintf("attention: %d messages to the principal, at most %d%s", n, *ck.Count, why)
+		}
 	case "wakeups":
 		if n := len(h.App.Wakeups()); n < max(ck.Min, 1) {
 			return fmt.Sprintf("wakeups: %d active, want at least %d%s", n, max(ck.Min, 1), why)

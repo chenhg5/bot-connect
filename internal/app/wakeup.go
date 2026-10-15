@@ -39,7 +39,12 @@ type Wakeup struct {
 	Window bool `json:"window,omitempty"`
 	// Owner: "" for the brain's own, "config" for the principal's routines
 	// (the brain can't cancel those).
-	Owner    string `json:"owner,omitempty"`
+	Owner string `json:"owner,omitempty"`
+	// Asked: set in a turn where the principal spoke (a reminder they asked
+	// for) — it fires on time. Wakeups the brain gives itself keep to the
+	// working window and the day's budget, so working on its own can't run
+	// away.
+	Asked    bool   `json:"asked,omitempty"`
 	Skips    int    `json:"skips,omitempty"`
 	LastSkip string `json:"last_skip,omitempty"`
 }
@@ -51,6 +56,7 @@ type WakeupSpec struct {
 	Item              ItemID
 	If                *observe.Probe
 	Window            bool
+	Asked             bool // the principal asked for it in this turn
 }
 
 func (w Wakeup) Describe() string {
@@ -68,8 +74,13 @@ func (w Wakeup) Describe() string {
 	if w.Window {
 		s += "；只在工作时段"
 	}
-	if w.Owner == "config" {
+	switch {
+	case w.Owner == "config":
 		s += "；委托人的例行"
+	case w.Asked:
+		s += "；委托人要的"
+	default:
+		s += "；自己定的"
 	}
 	if w.Runs > 0 || w.Skips > 0 {
 		s += fmt.Sprintf("；醒过 %d 次，跳过 %d 次", w.Runs, w.Skips)
@@ -152,7 +163,7 @@ func (a *App) ScheduleWakeup(ctx context.Context, by Actor, sp WakeupSpec) (Wake
 			}
 		}
 		out = Wakeup{ID: s.NextID("WK"), Note: note, When: when, Every: every, Project: pid, Item: item, Next: next, By: by, CreatedAt: now,
-			If: sp.If, Window: sp.Window}
+			If: sp.If, Window: sp.Window, Asked: sp.Asked}
 		s.Wakeups[out.ID] = out
 		return []Event{NewEvent("wakeup.added", "wakeup:"+out.ID, now, by, "next", next, "every", every)}, nil
 	})
@@ -208,11 +219,12 @@ func (a *App) tickWakeups(ctx context.Context) {
 	})
 	sort.Slice(due, func(i, j int) bool { return due[i].Next.Before(due[j].Next) })
 	for _, w := range due {
+		held := w.Window || (w.Owner == "" && !w.Asked)
 		switch {
-		case w.Window && !a.Policy.InWindow(now):
+		case held && !a.Policy.InWindow(now):
 			a.moveWakeup(ctx, w.ID, a.Policy.NextWindow(now), "")
 			continue
-		case w.Window && a.OverBudget():
+		case held && a.OverBudget():
 			tomorrow := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).AddDate(0, 0, 1)
 			a.moveWakeup(ctx, w.ID, a.Policy.NextWindow(tomorrow), "")
 			continue
