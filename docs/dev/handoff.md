@@ -112,6 +112,13 @@ cmd/bot-connect/        CLI：bot run / eval run|jev|list / project|item|inbox
 - 复利：`routine` 提醒有了，“把重复工作做成 worker/skill”的落地流程还没有（需要 worker 模板 + 让 agent 写 skill）。
 - 计划的历史与回顾：计划完成后自动复盘（预测 vs 实际、哪些节点返工），写进项目卡片。
 
+### 6.5 安全待决
+
+- `internal/brain/kiro.go` 用 `--permissions allow-all` 启动 kiro brain，等于给 brain 全部工具（shell、写文件）。
+  claudecode brain 只给 bot 自己的工具，因为 brain 会收到同事和访客的消息，权限放开有被注入利用的风险。
+  kiro 是可选的（`[brain] agent = "kiro"`），线上没用；启用前应先换成只放行 bot 工具的权限设置。
+- Jev（TypeSafe）账号已停用（2026-10-15）：消息分类、泄露检查、诚实检查、计划审视退回规则。评测判分可用 `[judge] provider = "claude"`。
+
 ## 7. 怎么跑
 
 ```bash
