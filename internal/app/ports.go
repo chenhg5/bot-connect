@@ -39,6 +39,7 @@ type State struct {
 	Done     []observe.Done                `json:"acts,omitempty"`            // recent actions (audit)
 	Proposed map[string]ActProposal        `json:"act_proposals,omitempty"`   // actions waiting for the principal
 	Tools    map[string]observe.Tool       `json:"tools,omitempty"`           // the toolbox
+	Wakeups  map[string]Wakeup             `json:"wakeups,omitempty"`         // times the brain asked to be woken
 }
 
 // Contact is a message the brain sent someone through the contact tool.
@@ -57,7 +58,7 @@ func NewState() *State {
 	return &State{Seq: map[string]int{}, Projects: map[ProjectID]portfolio.Project{}, Items: map[ItemID]planning.Item{},
 		Assignments: map[AssignmentID]delegation.Assignment{}, Workers: map[WorkerID]workforce.Worker{},
 		States: map[WorkerID]workforce.WorkerState{}, Signals: map[string]inbox.Signal{}, Contacts: map[string]Contact{}, Escalated: map[string]bool{},
-		Dossiers: map[ProjectID]observe.Dossier{}, Watches: map[string]observe.Watch{}, Proposed: map[string]ActProposal{}, Tools: map[string]observe.Tool{}}
+		Dossiers: map[ProjectID]observe.Dossier{}, Watches: map[string]observe.Watch{}, Proposed: map[string]ActProposal{}, Tools: map[string]observe.Tool{}, Wakeups: map[string]Wakeup{}}
 }
 
 // Fill makes sure every map exists (after loading an older file).
@@ -101,6 +102,9 @@ func (s *State) Fill() {
 	}
 	if s.Tools == nil {
 		s.Tools = map[string]observe.Tool{}
+	}
+	if s.Wakeups == nil {
+		s.Wakeups = map[string]Wakeup{}
 	}
 }
 

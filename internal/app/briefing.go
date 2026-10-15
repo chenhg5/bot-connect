@@ -593,6 +593,7 @@ func (a *App) Overview(ctx context.Context) string {
 	sort.Strings(people)
 	b.WriteString("人力：" + strings.Join(people, "、") + "（agent 按需启动，直接交给它即可；详情用 brief / find_people）\n")
 	b.WriteString("委托人的风格：" + a.Style.Describe() + "\n")
+	b.WriteString(a.wakeupLine(4))
 	return b.String()
 }
 

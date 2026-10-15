@@ -337,6 +337,7 @@ type Wake struct {
 	Cadence       string   `toml:"cadence"`
 	System        string   `toml:"system"`
 	Observation   string   `toml:"observation"` // watched sources that changed / went quiet / failing
+	Wakeup        string   `toml:"wakeup"`      // times the brain asked to be woken at (default now)
 	BatchEvery    Duration `toml:"batch_every"`
 }
 
@@ -344,7 +345,7 @@ type Wake struct {
 func (w Wake) Modes() map[string]string {
 	out := map[string]string{}
 	for k, v := range map[string]string{"direct_message": w.DirectMessage, "mention": w.Mention, "worker_reply": w.WorkerReply,
-		"relay": w.Relay, "risk_high": w.RiskHigh, "risk_medium": w.RiskMedium, "risk_low": w.RiskLow, "cadence": w.Cadence, "system": w.System, "observation": w.Observation} {
+		"relay": w.Relay, "risk_high": w.RiskHigh, "risk_medium": w.RiskMedium, "risk_low": w.RiskLow, "cadence": w.Cadence, "system": w.System, "observation": w.Observation, "wakeup": w.Wakeup} {
 		if v != "" {
 			out[k] = v
 		}

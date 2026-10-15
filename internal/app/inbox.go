@@ -27,7 +27,7 @@ func DefaultWakePolicy() WakePolicy {
 	return WakePolicy{BatchEvery: 30 * time.Minute, Modes: map[string]string{
 		"direct_message": "now", "mention": "now", "worker_reply": "now", "relay": "now",
 		"risk_high": "now", "risk_medium": "batch", "risk_low": "ignore", "cadence": "batch", "system": "batch",
-		"observation": "batch"}}
+		"observation": "batch", "wakeup": "now"}}
 }
 
 // Mode decides for one signal.

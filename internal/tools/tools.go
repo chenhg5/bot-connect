@@ -509,7 +509,7 @@ func New(env Env) *Registry {
 		}
 		r.add(Tool{
 			Name: "schedule_create",
-			Description: "Create a scheduled job (principal/admin only). At each run its instruction is posted into THIS conversation and you carry it out then (answer or delegate). " +
+			Description: "Create a scheduled job (principal/admin only) that posts an instruction into a conversation at its times. To be woken yourself later (follow-ups, reports, rhythms), use wakeup instead — it goes through your inbox. " +
 				"spec: cron \"m h dom mon dow\" (e.g. \"0 9 * * 1-5\" = 9:00 on weekdays), \"@every 2h\", \"@daily\", \"@weekly\", optional \"TZ=Asia/Shanghai \" prefix, or one-shot \"@once 2h\" / \"@once 15:00\" / \"@once 2026-10-12T09:00\". Minimum interval 5 minutes.",
 			PrincipalOnly: true,
 			Schema: obj(props{
@@ -599,6 +599,7 @@ func New(env Env) *Registry {
 		addObserve(r, env)
 		addAct(r, env)
 		addToolbox(r, env)
+		addWakeup(r, env)
 	}
 	sort.Strings(r.names)
 	return r

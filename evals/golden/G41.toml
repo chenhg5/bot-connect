@@ -1,0 +1,33 @@
+id = "G41"
+title = "定时唤醒：答应周五提醒、每周一出周报——到点自己醒来做"
+critical = true
+capabilities = ["pm", "state"]
+milestone = "wakeup"
+fixture = "tracker-export"
+now = "2026-10-15 10:00"
+
+[[steps]]
+say = "{fixture} 是公司官网改版的项目，任务在 tracker 里，这里是每天的导出。你来跟进。另外这周五下午 3 点提醒我找 Dana 确认上线审批的排期；以后每周一早上 9 点给我一份这个项目的周报。"
+timeout = "6m"
+  [[steps.expect]]
+  type = "wakeups"
+  min = 2
+  why = "一次性提醒和每周的周报都要定下来"
+
+[[steps]]
+advance = "30h"
+timeout = "5m"
+  [[steps.expect]]
+  type = "reply"
+  to = "principal"
+  contains_any = ["Dana"]
+  why = "周五下午到点提醒找 Dana"
+
+[[steps]]
+advance = "65h"
+timeout = "6m"
+  [[steps.expect]]
+  type = "reply"
+  to = "principal"
+  contains_any = ["周报", "本周", "这周", "上周"]
+  why = "周一早上自己出周报"

@@ -39,6 +39,7 @@ func (a *App) Run(ctx context.Context, every time.Duration) {
 func (a *App) Tick(ctx context.Context) {
 	a.followUps(ctx)
 	a.runWatches(ctx)
+	a.tickWakeups(ctx)
 	a.advancePlans(ctx)
 	a.raiseFindings(ctx)
 	a.tickInbox(ctx)

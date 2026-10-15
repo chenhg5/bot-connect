@@ -261,6 +261,10 @@ func (h *Harness) check(ck Check, msgs []Msg, calls []ToolCall, before map[strin
 		if msg := h.checkFile(ck); msg != "" {
 			return msg + why
 		}
+	case "wakeups":
+		if n := len(h.App.Wakeups()); n < max(ck.Min, 1) {
+			return fmt.Sprintf("wakeups: %d active, want at least %d%s", n, max(ck.Min, 1), why)
+		}
 	case "toolbox":
 		approved := 0
 		for _, t := range h.App.Tools() {
