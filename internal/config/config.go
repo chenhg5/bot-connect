@@ -32,6 +32,8 @@ type Config struct {
 	// Judge: the L1 judgment model (TypeSafe Jev) for triage, the outbound
 	// leak guard and semantic staffing. Without a key, rules are used.
 	Judge Judge `toml:"judge"`
+	// Observe: what the bot may look at to follow work it doesn't run.
+	Observe Observe `toml:"observe"`
 
 	Bots []BotConfig `toml:"bots"`
 
@@ -334,6 +336,7 @@ type Wake struct {
 	RiskLow       string   `toml:"risk_low"`
 	Cadence       string   `toml:"cadence"`
 	System        string   `toml:"system"`
+	Observation   string   `toml:"observation"` // watched sources that changed / went quiet / failing
 	BatchEvery    Duration `toml:"batch_every"`
 }
 
@@ -341,7 +344,7 @@ type Wake struct {
 func (w Wake) Modes() map[string]string {
 	out := map[string]string{}
 	for k, v := range map[string]string{"direct_message": w.DirectMessage, "mention": w.Mention, "worker_reply": w.WorkerReply,
-		"relay": w.Relay, "risk_high": w.RiskHigh, "risk_medium": w.RiskMedium, "risk_low": w.RiskLow, "cadence": w.Cadence, "system": w.System} {
+		"relay": w.Relay, "risk_high": w.RiskHigh, "risk_medium": w.RiskMedium, "risk_low": w.RiskLow, "cadence": w.Cadence, "system": w.System, "observation": w.Observation} {
 		if v != "" {
 			out[k] = v
 		}
@@ -357,9 +360,17 @@ type Style struct {
 	Parallel    int      `toml:"parallel"`     // agent tasks plans may run at once (default 4)
 }
 
+// Observe configures looking: directories open to read, extra read-only
+// command patterns (besides git / gh read commands), and web hosts.
+type Observe struct {
+	Roots    []string `toml:"roots"`    // e.g. ["~/code/projects"]
+	Commands []string `toml:"commands"` // e.g. ["hp * get", "hp * list", "linear issue list"]
+	Hosts    []string `toml:"hosts"`    // e.g. ["api.linear.app"]
+}
+
 // Judge configures the L1 judgment layer.
 type Judge struct {
-	Provider      string  `toml:"provider"` // "jev" (default when a key is set) | "none"
+	Provider      string  `toml:"provider"` // "jev" (default when a key is set) | "claude" (local CLI, a slower fallback) | "none"
 	APIKey        string  `toml:"api_key"`
 	APIKeyEnv     string  `toml:"api_key_env"` // read the key from this env var (default TYPESAFE_API_KEY)
 	Model         string  `toml:"model"`       // default jev-latest

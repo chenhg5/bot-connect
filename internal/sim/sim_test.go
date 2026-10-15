@@ -67,7 +67,7 @@ func TestHarnessRunsTheFollowUpCaseWithoutAModel(t *testing.T) {
 
 func TestEveryCaseDeclaresCapabilities(t *testing.T) {
 	known := map[string]bool{"triage": true, "planning": true, "explore": true, "delegation": true, "risk": true, "state": true,
-		"pm": true, "boundaries": true, "communication": true, "judgment": true}
+		"pm": true, "boundaries": true, "communication": true, "judgment": true, "observe": true}
 	cases, err := LoadFS(evals.Golden, "golden")
 	if err != nil {
 		t.Fatal(err)

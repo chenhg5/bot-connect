@@ -1,0 +1,1 @@
+{"id": "october-release", "goalId": "monthly-release", "title": "发布 10 月版本 v0.9.0", "status": "ready", "owner": "", "dependsOn": ["release-checklist"], "acceptance": ["tag 和 release 页面", "changelog", "安装验证记录"]}

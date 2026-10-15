@@ -1,0 +1,26 @@
+id = "G35"
+title = "接管（tracker 导出的项目）：看出没人负责和没开始的事"
+critical = true
+capabilities = ["observe", "risk"]
+milestone = "observe"
+fixture = "tracker-export"
+now = "2026-10-15 10:00"
+
+[[steps]]
+say = "{fixture} 是公司官网改版的项目，任务在 tracker 里，这里是每天的导出。你来跟进。"
+timeout = "6m"
+  [[steps.expect]]
+  type = "dossier"
+  min = 150
+  contains_any = ["11 月 15|11-15|11/15|11月15", "Dana|审批", "issues.json"]
+  why = "小抄写清截止、审批人、真相在哪"
+  [[steps.expect]]
+  type = "watches"
+  min = 1
+  why = "盯住每天的导出"
+  [[steps.expect]]
+  type = "judge"
+  to = "principal"
+  question = "这条回复是否指出了具体的风险或缺口（例如 SEO 与埋点没人负责、产品页还没开始、上线审批还在 backlog），并说明打算怎么跟进？"
+  at_least = 0.6
+  why = "看出风险"

@@ -28,6 +28,7 @@ type App struct {
 	Reviewer  PlanReviewer    // optional outside look at plans before they are proposed
 	Learnings LearningChecker // optional check of what an exploration round concluded
 	Sorter    Sorter          // optional: places a pile of things in buckets
+	Prober    Prober          // optional: looks at files, commands, pages (following work the bot doesn't run)
 	Style     Style
 	Log       *slog.Logger
 }

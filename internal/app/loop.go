@@ -38,6 +38,7 @@ func (a *App) Run(ctx context.Context, every time.Duration) {
 // what to do about a problem; it makes sure someone hears about it in time.
 func (a *App) Tick(ctx context.Context) {
 	a.followUps(ctx)
+	a.runWatches(ctx)
 	a.advancePlans(ctx)
 	a.raiseFindings(ctx)
 	a.tickInbox(ctx)

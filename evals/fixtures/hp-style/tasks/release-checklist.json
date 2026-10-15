@@ -1,0 +1,1 @@
+{"id": "release-checklist", "goalId": "monthly-release", "title": "写发版清单", "status": "in_progress", "owner": "codex-session-1", "acceptance": ["覆盖构建、测试、打 tag、changelog、安装验证"]}

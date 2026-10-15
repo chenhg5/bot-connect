@@ -5,3 +5,4 @@ config.toml
 .DS_Store
 *.log
 eval.toml
+.eval-out/

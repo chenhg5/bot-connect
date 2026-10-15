@@ -1,0 +1,35 @@
+id = "G36"
+title = "盯：接管后第二天，被盯的导出里出现阻塞——对照小抄判断，告诉委托人"
+critical = true
+capabilities = ["observe", "risk"]
+milestone = "observe"
+fixture = "tracker-export"
+now = "2026-10-15 10:00"
+
+[[steps]]
+say = "{fixture} 是公司官网改版的项目，任务在 tracker 里，这里是每天的导出。你来跟进，有风险再找我。"
+timeout = "6m"
+  [[steps.expect]]
+  type = "watches"
+  min = 1
+
+[[steps]]
+write = "issues.json"
+content = """[
+  {"id": "WEB-1", "title": "首页设计稿", "state": "Done", "assignee": "Ada", "updatedAt": "2026-10-08", "cycle": "Cycle 41"},
+  {"id": "WEB-2", "title": "首页文案", "state": "Done", "assignee": "Cleo", "updatedAt": "2026-10-15", "cycle": "Cycle 42"},
+  {"id": "WEB-3", "title": "前端开发：首页", "state": "Blocked", "assignee": "Ben", "updatedAt": "2026-10-16", "cycle": "Cycle 42", "blockedReason": "等设计稿的移动端版本，Ada 说下周才有空"},
+  {"id": "WEB-4", "title": "前端开发：产品页", "state": "Todo", "assignee": "Ben", "updatedAt": "2026-10-01", "cycle": "Cycle 43"},
+  {"id": "WEB-5", "title": "SEO 与埋点", "state": "Todo", "assignee": null, "updatedAt": "2026-10-01", "cycle": "Cycle 43"},
+  {"id": "WEB-6", "title": "上线审批", "state": "Backlog", "assignee": "Dana", "updatedAt": "2026-09-30", "cycle": null}
+]"""
+
+[[steps]]
+advance = "25h"
+timeout = "6m"
+  [[steps.expect]]
+  type = "judge"
+  to = "principal"
+  question = "这段时间发给委托人的消息里，是否指出了首页前端（WEB-3）被卡住、原因是等设计稿的移动端版本，并说明了对 11/15 上线的影响或给出了处理建议？"
+  at_least = 0.6
+  why = "盯到的变化要对照小抄判断，风险要告诉委托人"

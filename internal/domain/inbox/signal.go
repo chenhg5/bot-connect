@@ -23,6 +23,7 @@ const (
 	Relay         Source = "relay"          // passed on from an isolated conversation (a colleague's request…)
 	Risk          Source = "risk"           // a rule found a problem
 	Cadence       Source = "cadence"        // a project's rhythm came due
+	Observation   Source = "observation"    // a watched source changed, kept failing, or went quiet
 	Internal      Source = "system"         // anything else from the scaffold
 )
 

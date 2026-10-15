@@ -1,0 +1,8 @@
+[
+  {"id": "WEB-1", "title": "首页设计稿", "state": "Done", "assignee": "Ada", "updatedAt": "2026-10-08", "cycle": "Cycle 41"},
+  {"id": "WEB-2", "title": "首页文案", "state": "In Review", "assignee": "Cleo", "updatedAt": "2026-10-13", "cycle": "Cycle 42"},
+  {"id": "WEB-3", "title": "前端开发：首页", "state": "In Progress", "assignee": "Ben", "updatedAt": "2026-10-14", "cycle": "Cycle 42"},
+  {"id": "WEB-4", "title": "前端开发：产品页", "state": "Todo", "assignee": "Ben", "updatedAt": "2026-10-01", "cycle": "Cycle 43"},
+  {"id": "WEB-5", "title": "SEO 与埋点", "state": "Todo", "assignee": null, "updatedAt": "2026-10-01", "cycle": "Cycle 43"},
+  {"id": "WEB-6", "title": "上线审批", "state": "Backlog", "assignee": "Dana", "updatedAt": "2026-09-30", "cycle": null}
+]

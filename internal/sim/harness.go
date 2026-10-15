@@ -1,8 +1,13 @@
 package sim
 
 import (
+	"io/fs"
+	"path"
+	"path/filepath"
+
 	"context"
 	"fmt"
+	"github.com/chenhg5/bot-connect/evals"
 	"os"
 	"strings"
 	"sync"
@@ -136,8 +141,9 @@ func (f *fakeAgent) Notify(context.Context, workforce.Worker, delegation.Assignm
 
 // Harness is one simulated bot.
 type Harness struct {
-	lastSeen      int // messages + tool calls seen by settle
-	principalSeen int // messages the scripted principal has reacted to
+	fixture       string // path of the case's project folder copy
+	lastSeen      int    // messages + tool calls seen by settle
+	principalSeen int    // messages the scripted principal has reacted to
 	Case          Case
 	Clock         *FakeClock
 	App           *app.App
@@ -189,6 +195,12 @@ func New(ctx context.Context, cfg *config.Config, c Case) (*Harness, error) {
 	}})
 	bc.Style = config.Style{Risk: c.Style.Risk, AskBefore: c.Style.AskBefore, BudgetMonth: c.Style.BudgetMonth, Parallel: c.Style.Parallel}
 	claims := assemble.WirePM(h.App, h.Hub, bc, cfg.Judge)
+	if c.Fixture != "" {
+		if h.fixture, err = copyFixture(c.Fixture, filepath.Join(dir, "projects")); err != nil {
+			return nil, err
+		}
+		assemble.WireObserve(h.App, config.Observe{Roots: []string{filepath.Join(dir, "projects")}})
+	}
 	h.judge = assemble.NewJudge(cfg.Judge)
 
 	reg := tools.New(tools.Env{Bot: bc.Name, Workers: wm, Messenger: h.Hub, Scope: worker.Scope{Bot: bc.Name}, App: h.App})
@@ -409,4 +421,29 @@ func (h *Harness) waitIdle(timeout time.Duration) bool {
 
 func hubInbound(chat, id, user, name, text string, group bool) hub.Inbound {
 	return hub.Inbound{Platform: platformName, ChatID: chat, MessageID: id, SenderID: user, Sender: name, Text: text, IsGroup: group}
+}
+
+// copyFixture copies evals/fixtures/<name> into dest/<name>.
+func copyFixture(name, dest string) (string, error) {
+	root := path.Join("fixtures", name)
+	if _, err := fs.Stat(evals.Fixtures, root); err != nil {
+		return "", fmt.Errorf("no fixture %q", name)
+	}
+	out := filepath.Join(dest, name)
+	err := fs.WalkDir(evals.Fixtures, root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel := strings.TrimPrefix(strings.TrimPrefix(p, root), "/")
+		target := filepath.Join(out, filepath.FromSlash(rel))
+		if d.IsDir() {
+			return os.MkdirAll(target, 0o755)
+		}
+		b, err := fs.ReadFile(evals.Fixtures, p)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(target, b, 0o644)
+	})
+	return out, err
 }

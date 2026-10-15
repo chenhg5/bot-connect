@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chenhg5/bot-connect/internal/adapters/probe"
 	"github.com/chenhg5/bot-connect/internal/app"
 	"github.com/chenhg5/bot-connect/internal/audit"
 	"github.com/chenhg5/bot-connect/internal/config"
@@ -119,6 +120,9 @@ func oneLine(s string, n int) string {
 
 // NewJudge builds the configured L1 judge (judge.None without a key).
 func NewJudge(jc config.Judge) judge.Judge {
+	if jc.Provider == "claude" {
+		return judge.Claude{Model: jc.Model}
+	}
 	if jc.Provider == "none" || jc.Key() == "" {
 		return judge.None{}
 	}
@@ -202,4 +206,19 @@ func wireJudge(a *app.App, h *hub.Hub, bc config.BotConfig, jc config.Judge, cla
 			Body: fmt.Sprintf("发往 %s 的消息被拦下（%s）。原文：\n%s\n对方问的是：%s\n需要的话，改写后用 reply / contact 重新发。", c.Key, v.Reason, text, c.LastAsked)})
 		return fmt.Sprintf("这个我需要先跟 %s 确认一下，确认后再回复你。", principal), true
 	})
+}
+
+// WireObserve gives the app its eyes: a local prober limited to the
+// configured roots, read-only commands and hosts, plus the command patterns
+// the principal allows at run time.
+func WireObserve(a *app.App, oc config.Observe) {
+	if len(oc.Roots) == 0 {
+		return
+	}
+	roots := make([]string, len(oc.Roots))
+	for i, r := range oc.Roots {
+		roots[i] = config.ExpandHome(r)
+	}
+	a.Prober = &probe.Local{Roots: roots, Commands: append(append([]string(nil), probe.DefaultCommands...), oc.Commands...),
+		Hosts: oc.Hosts, Extra: a.AllowedCommands}
 }

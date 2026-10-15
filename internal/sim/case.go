@@ -38,6 +38,10 @@ type Case struct {
 	Assignments []AssignSpec  `toml:"assignments"`
 
 	Style StyleSpec `toml:"style"` // the principal's style
+	// Fixture: a project folder from evals/fixtures, copied into a temporary
+	// directory that is the only place the bot may look; "{fixture}" in a
+	// step's text is replaced with its path.
+	Fixture string `toml:"fixture"`
 	// Principal: scripted answers in long runs (a question to the principal
 	// gets Say after Reply).
 	Principal PrincipalSpec `toml:"principal"`
@@ -150,7 +154,11 @@ type Step struct {
 	From    string `toml:"from"`  // "principal" (default) or a person id
 	Group   string `toml:"group"` // say it in this group chat (a mention)
 	Advance string `toml:"advance"`
-	Run     string `toml:"run"`     // let time pass hour by hour ("14d"): people and agents act, the bot reacts
+	Run     string `toml:"run"` // let time pass hour by hour ("14d"): people and agents act, the bot reacts
+	// Write replaces a file in the case's fixture (path relative to it):
+	// the world changing outside the bot.
+	Write   string `toml:"write"`
+	Content string `toml:"content"`
 	Deliver string `toml:"deliver"` // an agent delivers its open assignment: agent id
 	Result  string `toml:"result"`
 	Timeout string `toml:"timeout"`
@@ -197,6 +205,9 @@ type Check struct {
 	AgentsFirst bool     `toml:"agents_first"` // plan: no research or drafting handed to a person without a reason
 	Compounding bool     `toml:"compounding"`
 	Learned     int      `toml:"learned"` // plan: at least this many rounds recorded
+	// dossier: some project has a dossier of at least Min characters
+	// mentioning one of ContainsAny (each entry: alternatives separated by |);
+	// watches: at least Min watches exist.
 	// outcome (after a long run): the project's share of done work, how many
 	// messages the principal got, and whether anything went past its due date
 	// without the principal hearing about it.

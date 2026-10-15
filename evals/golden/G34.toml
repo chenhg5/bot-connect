@@ -1,0 +1,26 @@
+id = "G34"
+title = "接管（只有 markdown 的个人项目）：从路线图和周记里看出卡点"
+critical = false
+capabilities = ["observe"]
+milestone = "observe"
+fixture = "markdown-only"
+now = "2026-10-15 10:00"
+
+[[steps]]
+say = "{fixture} 是我在折腾的一个家里的事，你帮我盯着点。"
+timeout = "6m"
+  [[steps.expect]]
+  type = "dossier"
+  min = 150
+  contains_any = ["NAS", "去重", "备份"]
+  why = "小抄抓住目标和阶段"
+  [[steps.expect]]
+  type = "watches"
+  min = 1
+  why = "盯住路线图或周记"
+  [[steps.expect]]
+  type = "judge"
+  to = "principal"
+  question = "这条回复是否指出了需要委托人决定或处理的事（例如去重工具还没选定、硬盘 C 有坏道、这周进展停滞），而不只是复述路线图？"
+  at_least = 0.6
+  why = "看出卡点"

@@ -1,0 +1,12 @@
+{
+  "id": "monthly-release",
+  "title": "恢复每月一次的稳定发版",
+  "outcome": "用户每月初能拿到一个经过验证的版本，并知道里面有什么",
+  "status": "active",
+  "doneWhen": [
+    "发版清单写好并放进仓库",
+    "连续两个月按月初发版",
+    "每次发版都有 changelog 和安装验证记录"
+  ],
+  "evidenceRequired": ["release 链接", "changelog", "安装验证记录"]
+}

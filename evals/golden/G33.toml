@@ -1,0 +1,31 @@
+id = "G33"
+title = "接管（hp 风格的项目文件夹）：自己看、写小抄、定盯点、给第一份判断"
+critical = true
+capabilities = ["observe"]
+milestone = "observe"
+fixture = "hp-style"
+now = "2026-10-15 10:00"
+notes = "不认识这种格式也要看懂：目标与完成条件在 goals/，状态在 state/，进展在 worklogs/。月初发版已经错过是风险。"
+
+[[steps]]
+say = "把 {fixture} 这个项目管起来，这是我的个人开源项目。"
+timeout = "6m"
+  [[steps.expect]]
+  type = "tool"
+  called = ["look"]
+  why = "自己去看"
+  [[steps.expect]]
+  type = "dossier"
+  min = 200
+  contains_any = ["发版|release", "清单|checklist", "worklog|工作日志|日志", "state|状态"]
+  why = "小抄写清目标、进展从哪看"
+  [[steps.expect]]
+  type = "watches"
+  min = 2
+  why = "盯住能看出进展的地方"
+  [[steps.expect]]
+  type = "judge"
+  to = "principal"
+  question = "这条回复是否给出了这个项目的简要现状（目标、进展到哪、主要风险，例如月初发版已经错过、10 月版本还没开始），并请委托人确认理解是否正确？"
+  at_least = 0.6
+  why = "第一份判断，请委托人校准"

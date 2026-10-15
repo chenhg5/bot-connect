@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -96,12 +98,13 @@ func (h *Harness) do(ctx context.Context, st Step) (string, error) {
 		h.plat.seq++
 		id := fmt.Sprintf("m%d", h.plat.seq)
 		h.plat.mu.Unlock()
-		h.plat.on(hubInbound(chat, id, user, name, st.Say, st.Group != ""))
+		say := strings.ReplaceAll(st.Say, "{fixture}", h.fixture)
+		h.plat.on(hubInbound(chat, id, user, name, say, st.Group != ""))
 		where := "私聊"
 		if st.Group != "" {
 			where = "群 " + st.Group
 		}
-		return fmt.Sprintf("%s（%s）：%s", name, where, st.Say), nil
+		return fmt.Sprintf("%s（%s）：%s", name, where, say), nil
 	case st.Advance != "":
 		d, err := time.ParseDuration(st.Advance)
 		if err != nil {
@@ -110,6 +113,21 @@ func (h *Harness) do(ctx context.Context, st Step) (string, error) {
 		h.Clock.Advance(d)
 		h.App.Tick(ctx)
 		return fmt.Sprintf("时间过去 %s → %s", st.Advance, h.Clock.Now().Format("01-02 15:04 Mon")), nil
+	case st.Write != "":
+		if h.fixture == "" {
+			return "", fmt.Errorf("write: the case has no fixture")
+		}
+		target := filepath.Join(h.fixture, filepath.FromSlash(st.Write))
+		if !strings.HasPrefix(target, h.fixture+string(filepath.Separator)) {
+			return "", fmt.Errorf("write: %s is outside the fixture", st.Write)
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return "", err
+		}
+		if err := os.WriteFile(target, []byte(st.Content), 0o644); err != nil {
+			return "", err
+		}
+		return "项目里的 " + st.Write + " 变了（外部更新）", nil
 	case st.Run != "":
 		return h.run(ctx, st.Run)
 	case st.Deliver != "":
@@ -234,6 +252,14 @@ func (h *Harness) check(ck Check, msgs []Msg, calls []ToolCall, before map[strin
 	case "outcome":
 		if msg := h.checkOutcome(ck, msgs); msg != "" {
 			return msg + why
+		}
+	case "dossier":
+		if msg := h.checkDossier(ck); msg != "" {
+			return msg + why
+		}
+	case "watches":
+		if n := len(h.App.Watches("")); n < max(ck.Min, 1) {
+			return fmt.Sprintf("watches: %d, want at least %d%s", n, max(ck.Min, 1), why)
 		}
 	case "plan", "no_plan":
 		if msg := h.checkPlan(ck); msg != "" {
@@ -558,4 +584,43 @@ func ScoreByCapability(results []Result) []CapabilityScore {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Capability < out[j].Capability })
 	return out
+}
+
+// checkDossier: some project's dossier is long enough and mentions what it should.
+func (h *Harness) checkDossier(ck Check) string {
+	min := ck.Min
+	if min <= 0 {
+		min = 200
+	}
+	var have []string
+	h.App.Store.Read(func(s *app.State) {
+		for _, d := range s.Dossiers {
+			have = append(have, d.Text)
+		}
+	})
+	if len(have) == 0 {
+		return "dossier: none written"
+	}
+	var why []string
+	for _, text := range have {
+		if len([]rune(text)) < min {
+			why = append(why, fmt.Sprintf("%d characters < %d", len([]rune(text)), min))
+			continue
+		}
+		var missing []string
+		for _, want := range ck.ContainsAny {
+			found := false
+			for _, alt := range strings.Split(want, "|") {
+				found = found || strings.Contains(strings.ToLower(text), strings.ToLower(strings.TrimSpace(alt)))
+			}
+			if !found {
+				missing = append(missing, want)
+			}
+		}
+		if len(missing) == 0 {
+			return ""
+		}
+		why = append(why, fmt.Sprintf("missing %v", missing))
+	}
+	return "dossier: " + strings.Join(why, "; ") + "\n" + clip(have[0], 600)
 }

@@ -10,6 +10,7 @@ import (
 
 	"github.com/chenhg5/bot-connect/internal/domain/delegation"
 	"github.com/chenhg5/bot-connect/internal/domain/inbox"
+	"github.com/chenhg5/bot-connect/internal/domain/observe"
 	"github.com/chenhg5/bot-connect/internal/domain/planning"
 	"github.com/chenhg5/bot-connect/internal/domain/portfolio"
 	. "github.com/chenhg5/bot-connect/internal/domain/shared"
@@ -29,6 +30,11 @@ type State struct {
 	Contacts    map[string]Contact                     `json:"contacts"`            // messages the bot sent people via contact
 	Escalated   map[string]bool                        `json:"escalated,omitempty"` // risk signals sent straight to the principal
 	LastBatch   time.Time                              `json:"last_batch,omitempty"`
+	// Following work the bot doesn't run: its handbook per project, the
+	// sources it watches, and command patterns the principal allowed.
+	Dossiers map[ProjectID]observe.Dossier `json:"dossiers,omitempty"`
+	Watches  map[string]observe.Watch      `json:"watches,omitempty"`
+	Allowed  []string                      `json:"allowed_commands,omitempty"`
 }
 
 // Contact is a message the brain sent someone through the contact tool.
@@ -46,7 +52,8 @@ type Contact struct {
 func NewState() *State {
 	return &State{Seq: map[string]int{}, Projects: map[ProjectID]portfolio.Project{}, Items: map[ItemID]planning.Item{},
 		Assignments: map[AssignmentID]delegation.Assignment{}, Workers: map[WorkerID]workforce.Worker{},
-		States: map[WorkerID]workforce.WorkerState{}, Signals: map[string]inbox.Signal{}, Contacts: map[string]Contact{}, Escalated: map[string]bool{}}
+		States: map[WorkerID]workforce.WorkerState{}, Signals: map[string]inbox.Signal{}, Contacts: map[string]Contact{}, Escalated: map[string]bool{},
+		Dossiers: map[ProjectID]observe.Dossier{}, Watches: map[string]observe.Watch{}}
 }
 
 // Fill makes sure every map exists (after loading an older file).
@@ -78,6 +85,12 @@ func (s *State) Fill() {
 	}
 	if s.Escalated == nil {
 		s.Escalated = f.Escalated
+	}
+	if s.Dossiers == nil {
+		s.Dossiers = f.Dossiers
+	}
+	if s.Watches == nil {
+		s.Watches = f.Watches
 	}
 }
 

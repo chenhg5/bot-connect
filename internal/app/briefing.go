@@ -68,6 +68,11 @@ func (a *App) Briefing(ctx context.Context, o BriefingOptions) string {
 		if o.Focus == id && w.Projects[id].Plan.Stage != portfolio.NoPlan {
 			b.WriteString(a.DescribePlan(id) + "\n")
 		}
+		if o.Focus == id {
+			if obs := a.DescribeObserved(id); obs != "" {
+				b.WriteString(obs + "\n")
+			}
+		}
 	}
 	b.WriteString("\n" + Roster(w))
 	b.WriteString("委托人的风格：" + a.Style.Describe() + "\n")
@@ -551,6 +556,7 @@ func (a *App) Overview(ctx context.Context) string {
 			b.WriteString("；成员：" + strings.Join(parts, "，"))
 		}
 		b.WriteString(a.planLine(p))
+		b.WriteString(a.observedLine(id))
 		items := w.ItemsOf(id, false)
 		sort.Slice(items, func(i, j int) bool {
 			if (items[i].Due == nil) != (items[j].Due == nil) {
@@ -671,4 +677,21 @@ func RelativeDates(text string, now time.Time) map[string]time.Time {
 		}
 	}
 	return out
+}
+
+// observedLine says whether the bot follows a project from outside: a
+// dossier, and how many sources it watches.
+func (a *App) observedLine(pid ProjectID) string {
+	d, ok := a.Dossier(pid)
+	n := len(a.Watches(pid))
+	if (!ok || d.Text == "") && n == 0 {
+		return ""
+	}
+	line := "；跟进："
+	if ok && d.Text != "" {
+		line += "有小抄"
+	} else {
+		line += "没小抄"
+	}
+	return line + fmt.Sprintf("，盯 %d 处（dossier get 看详情）", n)
 }

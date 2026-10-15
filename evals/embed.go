@@ -17,3 +17,9 @@ var Jev embed.FS
 //
 //go:embed long/*.toml
 var Long embed.FS
+
+// Fixtures are project folders in different formats for onboarding cases
+// (fixtures/<name>/…), copied into a temporary directory per case.
+//
+//go:embed fixtures
+var Fixtures embed.FS

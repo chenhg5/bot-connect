@@ -25,6 +25,7 @@ keeping state, running projects, keeping boundaries — rather than whether it p
 | boundaries | privacy, injection, honesty (never claiming what didn't happen) |
 | communication | speed, brevity, silence when nothing is worth saying |
 | judgment | feasibility calls, ask vs act, fitting the principal's style |
+| observe | taking over a project in any format: looking, writing a dossier, choosing watches; judging what a watch found |
 
 Every golden case declares `capabilities = [...]`; results are reported per capability.
 

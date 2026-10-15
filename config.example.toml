@@ -232,10 +232,20 @@ idle_ttl = "24h"              # retire automatically after this long idle ("0s" 
 # app_id = "cli_…"
 # app_secret = "…"
 
+# Following work the bot doesn't run: what it may look at. Reading only —
+# files and directories inside roots, git / gh read commands plus the
+# patterns below, GETs to the hosts below. Secrets in output are masked.
+# The principal can allow more read-only commands at run time (observe_allow).
+[observe]
+# roots = ["~/code/projects"]
+# commands = ["hp * get", "hp * list", "linear issue list"]
+# hosts = []
+
 # L1 judgment layer (TypeSafe Jev): classifies incoming messages, checks
 # replies to colleagues for leaks, and matches people to needs by meaning.
 # Without a key everything falls back to rules.
 [judge]
+# provider = "jev"               # jev | claude (local `claude -p`, slower; fine for evals) | none
 # api_key = ""                    # or set TYPESAFE_API_KEY
 # api_key_env = "TYPESAFE_API_KEY"
 # model = "jev-latest"
