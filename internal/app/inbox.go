@@ -20,6 +20,12 @@ import (
 type WakePolicy struct {
 	Modes      map[string]string // direct_message | mention | worker_reply | relay | risk_high | risk_medium | risk_low | cadence | system → now | batch | ignore
 	BatchEvery time.Duration
+	// Working rhythm for non-urgent wake-ups (batches, routines): hours
+	// "09:00-21:00" (overnight ranges allowed), days "weekdays" / "Mon,Tue…",
+	// and how many wake-ups a day before non-urgent ones wait for tomorrow.
+	Hours       string
+	Days        string
+	DailyBudget int
 }
 
 // DefaultWakePolicy: people and high risks wake the brain; the rest batches.
@@ -155,6 +161,9 @@ func (a *App) WakeOn(ctx context.Context, replyConv string, ids ...string) {
 			x.MarkSeen(a.now())
 			s.Signals[id] = x
 			focus = append(focus, x)
+		}
+		if len(focus) > 0 {
+			countWake(s, a.now())
 		}
 		return nil, nil
 	})
@@ -400,7 +409,8 @@ func (a *App) tickInbox(ctx context.Context) {
 				escalate = append(escalate, x)
 			}
 		}
-		if now.Sub(s.LastBatch) >= a.Policy.BatchEvery {
+		quiet := !a.Policy.InWindow(now) || (a.Policy.DailyBudget > 0 && s.WakeCounts[dayKey(now)] >= a.Policy.DailyBudget)
+		if !quiet && now.Sub(s.LastBatch) >= a.Policy.BatchEvery {
 			for _, x := range s.Signals {
 				if x.Status == inbox.Pending {
 					batch = true

@@ -102,6 +102,10 @@ type Bot struct {
 	// Style: how the principal wants things run (risk appetite, what to
 	// ask first, budget, how much agent work plans may run at once).
 	Style Style `toml:"style"`
+	// Routines: the principal's fixed rhythms for the brain (a morning
+	// review, a weekly report), optionally only when a condition has
+	// something to show.
+	Routines []Routine `toml:"routines"`
 	// Wake: which signals wake the brain now, which wait for a batch.
 	Wake               Wake     `toml:"wake"`
 	MaxConcurrentTurns int      `toml:"max_concurrent_turns"`
@@ -339,6 +343,13 @@ type Wake struct {
 	Observation   string   `toml:"observation"` // watched sources that changed / went quiet / failing
 	Wakeup        string   `toml:"wakeup"`      // times the brain asked to be woken at (default now)
 	BatchEvery    Duration `toml:"batch_every"`
+	// Working rhythm for non-urgent wake-ups (batches, routines, the brain's
+	// rhythms): hours "09:00-21:00" (overnight allowed), days "weekdays" or
+	// "Mon,Tue,…", and wake-ups a day before non-urgent ones wait for tomorrow.
+	// Messages to the bot, high risks and one-off reminders are never held.
+	Hours       string `toml:"hours"`
+	Days        string `toml:"days"`
+	DailyBudget int    `toml:"daily_budget"`
 }
 
 // Modes returns the configured modes by signal kind (unset ones omitted).
@@ -351,6 +362,19 @@ func (w Wake) Modes() map[string]string {
 		}
 	}
 	return out
+}
+
+// Routine is a wake-up on a rhythm the principal sets.
+type Routine struct {
+	Name     string   `toml:"name"`  // short id: morning-review
+	Every    string   `toml:"every"` // cron "0 9 * * 1-5", @every 2h, @daily, TZ= prefix
+	Note     string   `toml:"note"`  // what to do
+	Project  string   `toml:"project"`
+	Window   *bool    `toml:"window"`  // keep to the working hours (default true)
+	IfKind   string   `toml:"if_kind"` // optional condition: file | dir | cmd | http | tool
+	IfTarget string   `toml:"if_target"`
+	IfArgs   []string `toml:"if_args"`
+	IfDir    string   `toml:"if_dir"`
 }
 
 // Style of the principal.

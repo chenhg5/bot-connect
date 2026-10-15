@@ -248,3 +248,15 @@ brain 答应“以后做”的事不能靠记性。`wakeup` 让 bot-connect 到�
 
 三者的分工：要**记得去做**一件事用 `wakeup`；要**知道某样东西变没变**用 `watch`（不花额度）；
 旧的 `schedule_create` 只用于往别的会话定时投递指令。评测：G41（周五提醒 + 每周一周报）。
+
+### 借鉴 multigent 的作息（heartbeat）
+
+- **条件唤醒**（multigent 的 `wakeup_condition` / `wakeup_preset`）：唤醒可带一个探针（命令、文件、目录、工具箱里的工具），
+  到点由代码先看，没结果就跳过这一次、不花 brain 额度；有结果就带进唤醒正文。
+- **工作时段**（`active_hours` / `active_days`）：`[bot.wake] hours / days`。批量信号、例行、brain 的周期唤醒只在时段内发生，
+  时段外到点的顺延到下一个时段开头；发给 bot 的消息、高风险、一次性的定时提醒不受限。
+- **例行**（`interval` + `wakeup_prompt`）：`[[bot.routines]]`，委托人定的固定作息（如工作日早上过一遍所有项目），
+  启动时同步成唤醒（`RT-<name>`），brain 取消不了；配置里删掉就结束。
+- **唤醒统计和每日预算**（`wakeup_count_today`）：记录每天唤醒次数，概览里显示；`daily_budget` 用完后非紧急的唤醒等到第二天，
+  防止盯点或例行把额度烧光、让线上 bot 停摆。
+- 已有、无需借鉴的：按来源决定马上 / 批量 / 忽略（对应 `triggers` + `trigger_debounce`），醒来先跨项目分类，一个主会话，错过的周期只补最新一次。

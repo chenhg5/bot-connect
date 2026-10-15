@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/chenhg5/bot-connect/internal/domain/inbox"
+	"github.com/chenhg5/bot-connect/internal/domain/observe"
 	. "github.com/chenhg5/bot-connect/internal/domain/shared"
 	"github.com/chenhg5/bot-connect/internal/schedule"
 )
@@ -31,6 +32,25 @@ type Wakeup struct {
 	By        Actor     `json:"by"`
 	CreatedAt time.Time `json:"created_at"`
 	Done      bool      `json:"done,omitempty"`
+	// If: looked at when due (by code, no brain turn); an empty result or a
+	// failure skips this time. Its output goes into the wake-up.
+	If *observe.Probe `json:"if,omitempty"`
+	// Window: keep to the working hours and days (non-urgent rhythms).
+	Window bool `json:"window,omitempty"`
+	// Owner: "" for the brain's own, "config" for the principal's routines
+	// (the brain can't cancel those).
+	Owner    string `json:"owner,omitempty"`
+	Skips    int    `json:"skips,omitempty"`
+	LastSkip string `json:"last_skip,omitempty"`
+}
+
+// WakeupSpec is what a wakeup is made from.
+type WakeupSpec struct {
+	Note, When, Every string
+	Project           ProjectID
+	Item              ItemID
+	If                *observe.Probe
+	Window            bool
 }
 
 func (w Wakeup) Describe() string {
@@ -41,6 +61,21 @@ func (w Wakeup) Describe() string {
 	s := fmt.Sprintf("%s %s（下次 %s）：%s", w.ID, when, w.Next.Format("01-02 Mon 15:04"), oneLine(w.Note, 80))
 	if w.Project != "" {
 		s += " [" + string(w.Project) + "]"
+	}
+	if w.If != nil {
+		s += "；条件：" + w.If.String()
+	}
+	if w.Window {
+		s += "；只在工作时段"
+	}
+	if w.Owner == "config" {
+		s += "；委托人的例行"
+	}
+	if w.Runs > 0 || w.Skips > 0 {
+		s += fmt.Sprintf("；醒过 %d 次，跳过 %d 次", w.Runs, w.Skips)
+		if w.LastSkip != "" {
+			s += "（上次跳过：" + w.LastSkip + "）"
+		}
 	}
 	return s
 }
@@ -54,8 +89,19 @@ const MinWakeupEvery = 15 * time.Minute
 // AddWakeup schedules a wakeup: when (one-shot, in the person's words or a
 // duration) or every (a recurring spec).
 func (a *App) AddWakeup(ctx context.Context, by Actor, note, when, every string, pid ProjectID, item ItemID) (Wakeup, error) {
+	return a.ScheduleWakeup(ctx, by, WakeupSpec{Note: note, When: when, Every: every, Project: pid, Item: item, Window: every != ""})
+}
+
+// ScheduleWakeup schedules a wakeup from a spec.
+func (a *App) ScheduleWakeup(ctx context.Context, by Actor, sp WakeupSpec) (Wakeup, error) {
+	note, when, every, pid, item := sp.Note, sp.When, sp.Every, sp.Project, sp.Item
 	if err := requirePrivileged(by, "schedule wakeups"); err != nil {
 		return Wakeup{}, err
+	}
+	if sp.If != nil {
+		if err := sp.If.Validate(); err != nil {
+			return Wakeup{}, fmt.Errorf("if: %w", err)
+		}
 	}
 	note = strings.TrimSpace(note)
 	if note == "" {
@@ -105,7 +151,8 @@ func (a *App) AddWakeup(ctx context.Context, by Actor, note, when, every string,
 				return nil, NotFound("no project %s", pid)
 			}
 		}
-		out = Wakeup{ID: s.NextID("WK"), Note: note, When: when, Every: every, Project: pid, Item: item, Next: next, By: by, CreatedAt: now}
+		out = Wakeup{ID: s.NextID("WK"), Note: note, When: when, Every: every, Project: pid, Item: item, Next: next, By: by, CreatedAt: now,
+			If: sp.If, Window: sp.Window}
 		s.Wakeups[out.ID] = out
 		return []Event{NewEvent("wakeup.added", "wakeup:"+out.ID, now, by, "next", next, "every", every)}, nil
 	})
@@ -121,6 +168,9 @@ func (a *App) CancelWakeup(ctx context.Context, by Actor, id string) error {
 		w, ok := s.Wakeups[id]
 		if !ok || w.Done {
 			return nil, NotFound("no active wakeup %s", id)
+		}
+		if w.Owner == "config" && by.Role != RolePrincipal {
+			return nil, Forbidden("%s is one of the principal's routines (configuration); ask them", id)
 		}
 		w.Done = true
 		s.Wakeups[id] = w
@@ -144,33 +194,56 @@ func (a *App) Wakeups() []Wakeup {
 }
 
 // tickWakeups raises due wakeups as signals and moves recurring ones on.
+// Rhythms keep to the working window and the day's budget; a condition is
+// looked at by code first, and an empty answer skips this time.
 func (a *App) tickWakeups(ctx context.Context) {
 	now := a.now()
-	var fire []Wakeup
-	_, _ = a.commit(ctx, func(s *State) ([]Event, error) {
-		for id, w := range s.Wakeups {
-			if w.Done || now.Before(w.Next) {
+	var due []Wakeup
+	a.Store.Read(func(s *State) {
+		for _, w := range s.Wakeups {
+			if !w.Done && !now.Before(w.Next) {
+				due = append(due, w)
+			}
+		}
+	})
+	sort.Slice(due, func(i, j int) bool { return due[i].Next.Before(due[j].Next) })
+	for _, w := range due {
+		switch {
+		case w.Window && !a.Policy.InWindow(now):
+			a.moveWakeup(ctx, w.ID, a.Policy.NextWindow(now), "")
+			continue
+		case w.Window && a.OverBudget():
+			tomorrow := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).AddDate(0, 0, 1)
+			a.moveWakeup(ctx, w.ID, a.Policy.NextWindow(tomorrow), "")
+			continue
+		}
+		gate := ""
+		if w.If != nil {
+			out, err := a.Look(ctx, System("wakeup"), *w.If)
+			if err != nil || strings.TrimSpace(out) == "" {
+				why := "条件没有结果"
+				if err != nil {
+					why = "条件看不了：" + oneLine(err.Error(), 100)
+				}
+				a.advanceWakeup(ctx, w, now, why)
 				continue
 			}
-			fired := w
-			w.Last, w.Runs = now, w.Runs+1
-			if w.Every == "" {
-				w.Done = true
-			} else if n, _, err := schedule.Next(w.Every, now); err == nil {
-				w.Next = n
-			} else {
-				w.Done = true
-			}
-			s.Wakeups[id] = w
-			fire = append(fire, fired)
+			gate = out
 		}
-		return nil, nil
-	})
-	sort.Slice(fire, func(i, j int) bool { return fire[i].Next.Before(fire[j].Next) })
-	for _, w := range fire {
+		a.advanceWakeup(ctx, w, now, "")
 		body := "到点了（你之前给自己定的）：" + w.Note
+		if w.Owner == "config" {
+			body = "例行（委托人定的作息）：" + w.Note
+		}
+		if gate != "" {
+			body += "\n条件 " + w.If.String() + " 的结果：\n" + clipRunes(gate, 2000)
+		}
 		if w.Every != "" {
-			body += fmt.Sprintf("\n（周期唤醒 %s，第 %d 次；不再需要就 wakeup cancel %s）", w.Every, w.Runs+1, w.ID)
+			body += fmt.Sprintf("\n（周期唤醒 %s，第 %d 次", w.Every, w.Runs+1)
+			if w.Owner != "config" {
+				body += "；不再需要就 wakeup cancel " + w.ID
+			}
+			body += "）"
 		}
 		if w.Next.Before(now.Add(-time.Hour)) {
 			body += fmt.Sprintf("\n（本该 %s 叫醒，晚了 %s）", w.Next.Format("01-02 15:04"), now.Sub(w.Next).Round(time.Minute))
@@ -179,6 +252,76 @@ func (a *App) tickWakeups(ctx context.Context) {
 			Actor: System("wakeup"), Summary: oneLine(w.Note, 100), Body: body, Level: 1,
 			Refs: inbox.Refs{Project: w.Project, Item: w.Item}})
 	}
+}
+
+// advanceWakeup records a run (or a skip) and moves a wakeup on.
+func (a *App) advanceWakeup(ctx context.Context, w Wakeup, now time.Time, skip string) {
+	_, _ = a.commit(ctx, func(s *State) ([]Event, error) {
+		x, ok := s.Wakeups[w.ID]
+		if !ok || x.Done {
+			return nil, nil
+		}
+		if skip != "" {
+			x.Skips++
+			x.LastSkip = now.Format("01-02 15:04") + " " + skip
+		} else {
+			x.Last, x.Runs = now, x.Runs+1
+		}
+		if x.Every == "" {
+			x.Done = true
+		} else if n, _, err := schedule.Next(x.Every, now); err == nil {
+			x.Next = n
+		} else {
+			x.Done = true
+		}
+		s.Wakeups[w.ID] = x
+		return nil, nil
+	})
+}
+
+// moveWakeup postpones one occurrence (outside the window, over budget).
+func (a *App) moveWakeup(ctx context.Context, id string, to time.Time, _ string) {
+	_, _ = a.commit(ctx, func(s *State) ([]Event, error) {
+		if x, ok := s.Wakeups[id]; ok && !x.Done && to.After(x.Next) {
+			x.Next = to
+			s.Wakeups[id] = x
+		}
+		return nil, nil
+	})
+}
+
+// SyncRoutines makes the principal's configured routines exist as
+// wakeups (owner "config"), keeping their schedule when unchanged and
+// ending those no longer configured.
+func (a *App) SyncRoutines(ctx context.Context, rs []WakeupSpec, names []string) error {
+	now := a.now()
+	_, err := a.commit(ctx, func(s *State) ([]Event, error) {
+		keep := map[string]bool{}
+		for i, r := range rs {
+			id := "RT-" + names[i]
+			keep[id] = true
+			cur, ok := s.Wakeups[id]
+			if ok && !cur.Done && cur.Every == r.Every && cur.Note == r.Note {
+				cur.If, cur.Window = r.If, r.Window
+				s.Wakeups[id] = cur
+				continue
+			}
+			next, once, err := schedule.Next(r.Every, now)
+			if err != nil || once {
+				return nil, Invalid("routine %s: every %q: %v", names[i], r.Every, err)
+			}
+			s.Wakeups[id] = Wakeup{ID: id, Note: r.Note, Every: r.Every, Project: r.Project, Next: next, By: System("config"),
+				CreatedAt: now, If: r.If, Window: r.Window, Owner: "config"}
+		}
+		for id, w := range s.Wakeups {
+			if w.Owner == "config" && !keep[id] && !w.Done {
+				w.Done = true
+				s.Wakeups[id] = w
+			}
+		}
+		return nil, nil
+	})
+	return err
 }
 
 // wakeupLine lists the next few wakeups for the overview.

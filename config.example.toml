@@ -40,6 +40,29 @@ history_limit = 30            # messages of plain-text history kept per conversa
 # budget_month = 0               # the bot may spend this much a month on its own
 # parallel = 4                   # agent tasks plans may run at once
 
+# Working rhythm (borrowed from multigent's heartbeat): non-urgent wake-ups
+# (batched signals, routines, the brain's rhythms) only inside these hours
+# and days, at most daily_budget a day — each one is a brain turn. Messages to
+# the bot, high risks and one-off reminders are never held.
+# [bot.wake]
+# hours = "09:00-21:00"
+# days = "weekdays"
+# daily_budget = 40
+#
+# The principal's fixed rhythms for the brain. With if_*, bot-connect looks
+# first and skips the wake-up when there is nothing to show.
+# [[bot.routines]]
+# name = "morning-review"
+# every = "TZ=Asia/Shanghai 0 9 * * 1-5"
+# note = "过一遍所有项目：今天最要紧的三件事，什么在等我"
+# [[bot.routines]]
+# name = "pr-review"
+# every = "TZ=Asia/Shanghai 0 14 * * 1-5"
+# note = "有开着的 PR 就看看谁卡住了"
+# if_kind = "cmd"
+# if_target = "gh"
+# if_args = ["pr", "list", "--repo", "owner/repo"]
+
 [brain]
 agent = "claudecode"          # "claudecode" | "codex" | "pi" | "kiro" | "command"  (pi: fastest; needs provider when isolated)
 # work_dir = "~/.bot-connect/brain"

@@ -32,14 +32,15 @@ type State struct {
 	LastBatch   time.Time                              `json:"last_batch,omitempty"`
 	// Following work the bot doesn't run: its handbook per project, the
 	// sources it watches, and command patterns the principal allowed.
-	Dossiers map[ProjectID]observe.Dossier `json:"dossiers,omitempty"`
-	Watches  map[string]observe.Watch      `json:"watches,omitempty"`
-	Allowed  []string                      `json:"allowed_commands,omitempty"`
-	Granted  []string                      `json:"act_permissions,omitempty"` // standing permissions to act
-	Done     []observe.Done                `json:"acts,omitempty"`            // recent actions (audit)
-	Proposed map[string]ActProposal        `json:"act_proposals,omitempty"`   // actions waiting for the principal
-	Tools    map[string]observe.Tool       `json:"tools,omitempty"`           // the toolbox
-	Wakeups  map[string]Wakeup             `json:"wakeups,omitempty"`         // times the brain asked to be woken
+	Dossiers   map[ProjectID]observe.Dossier `json:"dossiers,omitempty"`
+	Watches    map[string]observe.Watch      `json:"watches,omitempty"`
+	Allowed    []string                      `json:"allowed_commands,omitempty"`
+	Granted    []string                      `json:"act_permissions,omitempty"` // standing permissions to act
+	Done       []observe.Done                `json:"acts,omitempty"`            // recent actions (audit)
+	Proposed   map[string]ActProposal        `json:"act_proposals,omitempty"`   // actions waiting for the principal
+	Tools      map[string]observe.Tool       `json:"tools,omitempty"`           // the toolbox
+	Wakeups    map[string]Wakeup             `json:"wakeups,omitempty"`         // times the brain asked to be woken
+	WakeCounts map[string]int                `json:"wake_counts,omitempty"`     // brain wake-ups per day
 }
 
 // Contact is a message the brain sent someone through the contact tool.

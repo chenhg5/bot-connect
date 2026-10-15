@@ -14,6 +14,7 @@ import (
 	"github.com/chenhg5/bot-connect/internal/audit"
 	"github.com/chenhg5/bot-connect/internal/config"
 	"github.com/chenhg5/bot-connect/internal/domain/inbox"
+	"github.com/chenhg5/bot-connect/internal/domain/observe"
 	. "github.com/chenhg5/bot-connect/internal/domain/shared"
 	"github.com/chenhg5/bot-connect/internal/hub"
 	"github.com/chenhg5/bot-connect/internal/identity"
@@ -70,6 +71,7 @@ func WirePM(a *app.App, h *hub.Hub, bc config.BotConfig, jc config.Judge) *Claim
 	for k, v := range bc.Wake.Modes() {
 		a.Policy.Modes[k] = v
 	}
+	a.Policy.Hours, a.Policy.Days, a.Policy.DailyBudget = bc.Wake.Hours, bc.Wake.Days, bc.Wake.DailyBudget
 	if bc.Wake.BatchEvery.Duration > 0 {
 		a.Policy.BatchEvery = bc.Wake.BatchEvery.Duration
 	}
@@ -222,4 +224,18 @@ func WireObserve(a *app.App, oc config.Observe, toolDir string) {
 	l := &probe.Local{Roots: roots, Commands: append(append([]string(nil), probe.DefaultCommands...), oc.Commands...),
 		Hosts: oc.Hosts, Extra: a.AllowedCommands, Sessions: oc.Sessions, ToolDir: toolDir}
 	a.Prober, a.Hands = l, l
+}
+
+// SyncRoutines turns the configured routines into wake-ups.
+func SyncRoutines(ctx context.Context, a *app.App, rs []config.Routine) error {
+	var specs []app.WakeupSpec
+	var names []string
+	for _, r := range rs {
+		sp := app.WakeupSpec{Note: r.Note, Every: r.Every, Project: ProjectID(r.Project), Window: r.Window == nil || *r.Window}
+		if r.IfKind != "" {
+			sp.If = &observe.Probe{Kind: observe.Kind(r.IfKind), Target: r.IfTarget, Args: r.IfArgs, Dir: r.IfDir}
+		}
+		specs, names = append(specs, sp), append(names, r.Name)
+	}
+	return a.SyncRoutines(ctx, specs, names)
 }

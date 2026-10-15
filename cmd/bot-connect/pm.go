@@ -64,6 +64,9 @@ func setupPM(cfg *config.Config, bc config.BotConfig, h *hub.Hub, workers *worke
 	}})
 	claims := assemble.WirePM(a, h, bc, cfg.Judge)
 	assemble.WireObserve(a, cfg.Observe, filepath.Join(bc.Dir, "toolbox"))
+	if err := assemble.SyncRoutines(context.Background(), a, bc.Routines); err != nil {
+		return nil, nil, nil, fmt.Errorf("routines: %w", err)
+	}
 
 	ctx := context.Background()
 	if err := a.EnsureOrg(ctx, firstNonEmpty(cfg.Org.Title, "公司")); err != nil {
