@@ -4,3 +4,4 @@ config.toml
 .claude/
 .DS_Store
 *.log
+eval.toml
