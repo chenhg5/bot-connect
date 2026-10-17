@@ -221,7 +221,7 @@ func NotFound(format string, a ...any) error {
 
 // ScopeMatches reports whether a rule / authority scope covers an actual
 // scope: empty covers everything; otherwise equal, or a prefix at a ":" or
-// "/" boundary ("repo:tapnow" covers "repo:tapnow/web").
+// "/" boundary ("repo:website" covers "repo:website/web").
 func ScopeMatches(rule, actual string) bool {
 	if rule == "" || rule == "*" {
 		return true

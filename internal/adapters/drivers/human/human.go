@@ -119,6 +119,10 @@ func (d *Driver) send(ctx context.Context, w workforce.Worker, text string, u wo
 
 // OfferText is the request a person receives, shaped by what is asked.
 func OfferText(w workforce.Worker, a delegation.Assignment) string {
+	if c := a.Brief.Card; c != nil {
+		// a decision card is the whole message: question first, then what to pick
+		return "🤔 " + c.Render() + fmt.Sprintf("\n\n回复字母就行（比如“选 %s”）· %s", c.Recommend, a.ID)
+	}
 	var b strings.Builder
 	switch a.Kind {
 	case delegation.Approval:

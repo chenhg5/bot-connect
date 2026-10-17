@@ -60,7 +60,7 @@ type Criterion struct {
 	Text string `json:"text"`
 }
 
-// Need is what doing the item requires: a capability ("repo:tapnow:write"),
+// Need is what doing the item requires: a capability ("repo:website:write"),
 // an approval ("deploy:prod"), a decision, a physical action…
 type Need struct {
 	Kind   NeedKind `json:"kind"`

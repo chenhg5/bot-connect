@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -147,6 +148,17 @@ func wireJudge(a *app.App, h *hub.Hub, bc config.BotConfig, jc config.Judge, cla
 	}
 	if live && config.On(jc.Triage) {
 		a.Triage = &judge.Triage{J: j, App: a}
+	}
+	// decision cards are not on the hot path: a second reader with no
+	// context (a small model) reads each card and says what it couldn't follow
+	switch {
+	case jc.Provider == "none":
+	default:
+		if _, err := exec.LookPath("claude"); err == nil {
+			a.CardReader = judge.ColdReader{}
+		} else if live {
+			a.CardReader = judge.CardReader{J: j}
+		}
 	}
 	if live && config.On(jc.PlanReview) {
 		a.Reviewer = &judge.PlanReview{J: j}

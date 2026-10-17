@@ -114,9 +114,9 @@ func addPM(r *Registry, env Env) {
 			"need":       str("what is needed, in words: “定埋点方案”, “review PR touching media”"),
 			"project":    str("project id (default: the company)"),
 			"kind":       enum("why a particular kind of worker is needed; omit for ordinary work", "capability", "approval", "decision", "physical", "relationship", "judgment", "knowledge"),
-			"capability": str("system access needed, e.g. repo:tapnow:write, gcloud-logging:read"),
-			"action":     str("kind=approval: the action, e.g. merge:main, deploy:prod"),
-			"scope":      str("kind=approval: its scope, e.g. repo:tapnow"),
+			"capability": str("system access needed, e.g. repo:website:write, gcloud-logging:read"),
+			"action":     str("kind=approval: the action, e.g. publish:website, pay:vendor"),
+			"scope":      str("kind=approval: its scope, e.g. site:main"),
 			"item":       str("an item this continues (prefers whoever has the context)"),
 		}),
 		Handler: func(ctx context.Context, tc TurnContext, a map[string]any) (string, error) {
@@ -152,7 +152,7 @@ func addPM(r *Registry, env Env) {
 	})
 	r.add(Tool{
 		Name:          "plan_item",
-		Description:   "Add an item (a piece of work, or a milestone) to a project: title, acceptance criteria, due, effort, dependencies, and what it needs (needs: \"capability:repo:tapnow:write\", \"approval:deploy:prod\", \"decision:…\", \"physical:…\").",
+		Description:   "Add an item (a piece of work, or a milestone) to a project: title, acceptance criteria, due, effort, dependencies, and what it needs (needs: \"capability:repo:website:write\", \"approval:publish:website\", \"decision:…\", \"physical:…\").",
 		PrincipalOnly: true,
 		Schema: obj(props{
 			"project":    str("project id (default: the company)"),
@@ -163,7 +163,7 @@ func addPM(r *Registry, env Env) {
 			"due":        str("deadline in the person's words — 下周三 / 周五 18:00 / 明天下午 / 月底 / 17号 — or 2026-10-17 18:00 / 2h / 3d; bot-connect resolves it"),
 			"estimate":   str("effort: 30m | 4h | 1d (= 8h)"),
 			"priority":   enum("default: the project's", "P0", "P1", "P2", "P3"),
-			"needs":      arr("kind:detail, e.g. capability:repo:tapnow:write, approval:deploy:prod"),
+			"needs":      arr("kind:detail, e.g. capability:repo:website:write, approval:publish:website"),
 			"depends_on": arr("item ids this waits for"),
 		}, "title"),
 		Handler: func(ctx context.Context, tc TurnContext, a map[string]any) (string, error) {
@@ -460,9 +460,9 @@ func addPM(r *Registry, env Env) {
 	})
 	r.add(Tool{
 		Name:          "authorize",
-		Description:   "Before an action that may need approval (merge:main, deploy:prod, publish:external, spend…): checks the approval rules. Allowed → go ahead. Otherwise an approval request goes to whoever the rule names now (e.g. this week's on-call) and you get its assignment id; the answer comes back here.",
+		Description:   "Before an action that may need approval (publish:website, pay:vendor, sign:contracternal, spend…): checks the approval rules. Allowed → go ahead. Otherwise an approval request goes to whoever the rule names now (e.g. this week's on-call) and you get its assignment id; the answer comes back here.",
 		PrincipalOnly: true,
-		Schema:        obj(props{"item": str("the item the action belongs to"), "action": str("e.g. deploy:prod"), "scope": str("e.g. repo:tapnow"), "why": str("context for the approver")}, "item", "action"),
+		Schema:        obj(props{"item": str("the item the action belongs to"), "action": str("e.g. publish:website"), "scope": str("e.g. site:main"), "why": str("context for the approver")}, "item", "action"),
 		Handler: func(ctx context.Context, tc TurnContext, a map[string]any) (string, error) {
 			g, err := pm.Authorize(ctx, actorOf(pm, tc), ItemID(s(a, "item")), s(a, "action"), s(a, "scope"), s(a, "why"))
 			if err != nil {
@@ -518,7 +518,7 @@ func addPM(r *Registry, env Env) {
 			"member_worker": str("add member: worker id"), "member_role": str("their role here"), "member_duties": arr("what to go to them for"),
 			"member_from": str("role starts"), "member_until": str("role ends"),
 			"end_member_worker": str("end a membership: worker id"), "end_member_role": str("…and role"),
-			"policy_action": str("approval rule: action, e.g. deploy:prod"), "policy_scope": str("its scope"), "policy_approvers": arr("roles or worker ids"),
+			"policy_action": str("approval rule: action, e.g. publish:website"), "policy_scope": str("its scope"), "policy_approvers": arr("roles or worker ids"),
 			"card_scope": str("set the scope"), "card_decision": str("add a decision (what and why)"), "card_convention": str("add a convention"), "card_link": str("add a link"),
 		}, "project"),
 		Handler: func(ctx context.Context, tc TurnContext, a map[string]any) (string, error) {

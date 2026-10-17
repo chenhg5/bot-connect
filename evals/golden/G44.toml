@@ -1,0 +1,55 @@
+id = "G44"
+title = "讲清楚（非技术）：满是条款的续约分析，变成 30 秒能拍板的决策卡"
+critical = true
+capabilities = ["communication", "judgment"]
+milestone = "clarity"
+now = "2026-10-16 10:00"
+
+[[agents]]
+id = "legal"
+description = "法务助理 agent：读合同、比较条款、整理风险"
+
+[[projects]]
+id = "P2"
+title = "办公软件供应商续约"
+priority = "P2"
+
+[[items]]
+ref = "renew"
+project = "P2"
+title = "续约分析"
+
+[[assignments]]
+item = "renew"
+worker = "legal"
+goal = "分析现有办公软件供应商的续约条款和替代方案"
+status = "accepted"
+
+[[steps]]
+deliver = "legal"
+result = """分析完成。现合同 11 月 30 日到期，含自动续约条款（到期前 30 日未书面通知即续约 12 个月），续约价上调 8%（年费 36 万 → 38.9 万）。
+SLA 99.9%，过去 12 个月实际可用性 99.95%，未触发违约金。替代供应商 X 报价 31 万/年，SLA 99.5%，数据迁移需 3 周，迁移期间双系统并行，需全员培训，存在数据格式兼容风险（已用样本数据测试，附件导入正常，审批流需重配）。
+若要换，需在 10 月 31 日前发书面不续约通知（发邮件到对方法务邮箱即可，以对方收到为准），否则自动续约，之后再解约要付剩余年费的 20%（例如 12 月解约约 7.1 万）。
+换 X 的一次性成本已估算：迁移服务 2.5 万 + 培训 1.5 万，共 4 万；所以第一年净省 3.9 万，之后每年省 7.9 万。X 的 99.5% 可用性约等于一年最多停 44 小时，现供应商 99.9% 约 9 小时。
+现供应商销售口头表示可以谈，但没给数字。需要拍板续还是换。"""
+timeout = "6m"
+  [[steps.expect]]
+  type = "tool"
+  called = ["decide"]
+  why = "要委托人拍板的事用决策卡"
+  [[steps.expect]]
+  type = "judge"
+  to = "principal"
+  question = "假设读者完全不了解这件事、也不懂合同术语，只读发给委托人的这些消息、不查资料：他能否在 30 秒内说清（1）要他决定的是什么、最晚什么时候决定，（2）每个选项选了之后公司会遇到什么（花多少钱、要折腾多久），（3）推荐哪个、为什么？三点都能做到才回答是。"
+  at_least = 0.7
+  why = "冷读者 30 秒能决定"
+  [[steps.expect]]
+  type = "judge"
+  to = "principal"
+  question = "发给委托人的消息里，是否出现了没有解释的合同或技术术语（比如 SLA、自动续约条款、违约金比例而没说是多少钱、双系统并行）？"
+  at_most = 0.3
+  why = "术语要么换成大白话，要么当场解释"
+  [[steps.expect]]
+  type = "attention"
+  count = 2
+  why = "一次讲清，不来回追问"

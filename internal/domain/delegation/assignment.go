@@ -90,6 +90,7 @@ type Brief struct {
 	Due      *time.Time    `json:"due,omitempty"`
 	Estimate time.Duration `json:"estimate,omitempty"`
 	Priority Priority      `json:"priority"`
+	Card     *Card         `json:"card,omitempty"` // a decision put so it can be made in thirty seconds
 }
 
 // Step is one entry in the history.

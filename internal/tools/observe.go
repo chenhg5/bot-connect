@@ -16,7 +16,7 @@ import (
 func probeSchema() props {
 	return props{
 		"kind":   enum("file = read a file; dir = list a directory tree with modification times; cmd = an allowed read-only command; http = GET an allowed host; tool = an approved look tool from the toolbox", "file", "dir", "cmd", "http", "tool"),
-		"target": str("file / directory path, URL, the command's program (gh, git, hp, linear…), or the tool's name"),
+		"target": str("file / directory path, URL, the command's program, or the tool's name"),
 		"args":   arr("cmd: arguments, one per entry (no shell)"),
 		"dir":    str("cmd: working directory (inside the open roots)"),
 		"depth":  num("dir: how deep to list (default 2, max 4)"),
@@ -164,7 +164,7 @@ func addObserve(r *Registry, env Env) {
 	})
 	r.add(Tool{
 		Name: "observe_allow",
-		Description: "Allow probes to run another read-only command pattern, e.g. \"hp * get\", \"linear issue list\" (\"*\" = one non-flag argument). " +
+		Description: "Allow probes to run another read-only command pattern, e.g. \"<program> <subcommand> *\" (\"*\" = one non-flag argument). " +
 			"Only in a turn where the principal agreed to it; never allow anything that writes.",
 		PrincipalOnly: true,
 		Schema:        obj(props{"pattern": str("program and read-only subcommand(s)")}, "pattern"),

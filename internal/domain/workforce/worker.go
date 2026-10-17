@@ -72,14 +72,14 @@ type Consent struct {
 	Until *time.Time `json:"until,omitempty"`
 }
 
-// Capability is access to a system: "repo:tapnow" write, "gcloud-logging" read.
+// Capability is access to a system: "repo:website" write, "logs" read.
 type Capability struct {
 	System string `json:"system"`
 	Access string `json:"access"` // read | write | admin
 	Note   string `json:"note,omitempty"`
 }
 
-// Authority is what a person may approve: action "merge:main" in scope "repo:tapnow".
+// Authority is what a person may approve: action "publish" in scope "repo:website".
 type Authority struct {
 	Action string `json:"action"`
 	Scope  string `json:"scope,omitempty"`
@@ -88,7 +88,7 @@ type Authority struct {
 var accessRank = map[string]int{"read": 1, "write": 2, "admin": 3}
 
 // ParseCapability reads "system:access" where access is the last segment
-// ("repo:tapnow:write"); without an access level, read is assumed.
+// ("repo:website:write"); without an access level, read is assumed.
 func ParseCapability(s string) Capability {
 	if i := strings.LastIndex(s, ":"); i > 0 {
 		if _, ok := accessRank[s[i+1:]]; ok {

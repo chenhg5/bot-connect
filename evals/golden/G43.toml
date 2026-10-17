@@ -1,0 +1,54 @@
+id = "G43"
+title = "讲清楚（技术）：满是术语的迁移方案，变成 30 秒能拍板的决策卡"
+critical = true
+capabilities = ["communication", "judgment"]
+milestone = "clarity"
+now = "2026-10-16 10:00"
+
+[[agents]]
+id = "dba"
+description = "数据库 agent：评估和执行数据库变更"
+
+[[projects]]
+id = "P1"
+title = "订单库迁移"
+priority = "P1"
+
+[[items]]
+ref = "plan"
+project = "P1"
+title = "订单库迁移方案"
+
+[[assignments]]
+item = "plan"
+worker = "dba"
+goal = "评估订单库从旧机房迁到新机房的方案"
+status = "accepted"
+
+[[steps]]
+deliver = "dba"
+result = """方案评估完成。两条路径：
+方案一：停机窗口 cutover。周六 02:00–04:00 只读，做全量 dump + restore，校验 checksum 后切 DNS，RPO=0，RTO≈2h。风险：restore 超时需回滚，回滚 15min。
+方案二：双写 + CDC 增量同步，灰度切流 5%→50%→100%，零停机。需要应用层改双写，预计 2 周，期间维护两套写路径，存在双写不一致风险，需要对账脚本。
+两者都已在预发环境压测，方案一 restore 实测 1h20m（数据 380GB），方案二对账脚本还要 2 天写完。业务侧：周六凌晨 2–4 点订单量约为平时同时段的 3%，只读期间用户能浏览、不能下单和付款。回滚指切回旧库，15 分钟内完成，期间同样不能下单。下周六（10-24）可以执行，客服已知会。需要拍板走哪个。"""
+timeout = "6m"
+  [[steps.expect]]
+  type = "tool"
+  called = ["decide"]
+  why = "要委托人拍板的事用决策卡"
+  [[steps.expect]]
+  type = "judge"
+  to = "principal"
+  question = "假设读者完全不懂技术、也不了解这个项目，只读发给委托人的这些消息、不查资料：他能否在 30 秒内说清（1）要他决定的是什么，（2）每个选项选了之后用户或公司会遇到什么，（3）推荐哪个、为什么？三点都能做到才回答是。"
+  at_least = 0.7
+  why = "冷读者 30 秒能决定"
+  [[steps.expect]]
+  type = "judge"
+  to = "principal"
+  question = "发给委托人的消息里，是否出现了没有解释的技术词（比如 cutover、RPO、RTO、CDC、dump、灰度、双写、checksum）？"
+  at_most = 0.3
+  why = "术语要么换成大白话，要么当场解释"
+  [[steps.expect]]
+  type = "attention"
+  count = 2
+  why = "一次讲清，不来回追问"

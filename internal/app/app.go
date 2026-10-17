@@ -16,25 +16,26 @@ import (
 
 // App wires the domain to its ports.
 type App struct {
-	Store     Store
-	Clock     Clock
-	Drivers   map[string]WorkerDriver // by Worker.Driver, falling back to string(Worker.Kind)
-	Waker     Waker
-	Sink      EventSink
-	Attention attention.Service
-	Staffing  insight.Staffing
-	Policy    WakePolicy
-	Triage    Triage          // optional L1 judgment on incoming signals
-	Say       Say             // optional: post into a conversation (acknowledgements)
-	Reviewer  PlanReviewer    // optional outside look at plans before they are proposed
-	Learnings LearningChecker // optional check of what an exploration round concluded
-	Sorter    Sorter          // optional: places a pile of things in buckets
-	Prober    Prober          // optional: looks at files, commands, pages (following work the bot doesn't run)
-	onceMu    sync.Mutex
-	onceUsed  map[string]bool // turns whose single confirmation was spent
-	Hands     Hands           // optional: acts outside the bot (commands, file writes, messages to sessions), with the principal's permission
-	Style     Style
-	Log       *slog.Logger
+	Store      Store
+	Clock      Clock
+	Drivers    map[string]WorkerDriver // by Worker.Driver, falling back to string(Worker.Kind)
+	Waker      Waker
+	Sink       EventSink
+	Attention  attention.Service
+	Staffing   insight.Staffing
+	Policy     WakePolicy
+	Triage     Triage          // optional L1 judgment on incoming signals
+	Say        Say             // optional: post into a conversation (acknowledgements)
+	Reviewer   PlanReviewer    // optional outside look at plans before they are proposed
+	Learnings  LearningChecker // optional check of what an exploration round concluded
+	Sorter     Sorter          // optional: places a pile of things in buckets
+	Prober     Prober          // optional: looks at files, commands, pages (following work the bot doesn't run)
+	onceMu     sync.Mutex
+	onceUsed   map[string]bool // turns whose single confirmation was spent
+	CardReader CardReader      // optional: the cold reader that checks decision cards
+	Hands      Hands           // optional: acts outside the bot (commands, file writes, messages to sessions), with the principal's permission
+	Style      Style
+	Log        *slog.Logger
 }
 
 // New returns an app with the default rules.

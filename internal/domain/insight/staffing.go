@@ -19,7 +19,7 @@ type Need struct {
 	Kind       NeedKind              // "" = ordinary work
 	Capability *workforce.Capability // NeedCapability: e.g. gcloud-logging:read
 	Action     string                // NeedApproval: e.g. merge:main
-	Scope      string                // NeedApproval: e.g. repo:tapnow
+	Scope      string                // NeedApproval: e.g. repo:website
 	Item       ItemID                // continuing work: prefer whoever has context
 	By         Actor                 // who will hand the work over (consent)
 }

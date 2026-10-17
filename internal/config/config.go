@@ -240,7 +240,7 @@ type Worker struct {
 	// CODEX_HOME without ~/.codex config, global AGENTS.md, plugins). Default: true for
 	// workers others can use (per_user instances, readonly), false otherwise.
 	Isolate *bool `toml:"isolate" json:"isolate,omitempty"`
-	// What this agent can reach, as "system:access" ("repo:tapnow:write",
+	// What this agent can reach, as "system:access" ("repo:website:write",
 	// "gcloud-logging:read"). Default: its directory ("dir:<work_dir>:write"
 	// or ":read" for readonly). Used to decide when an agent can do something
 	// and nobody needs to be asked.

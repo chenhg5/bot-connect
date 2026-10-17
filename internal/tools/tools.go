@@ -457,7 +457,7 @@ func New(env Env) *Registry {
 		Schema: obj(props{
 			"template": str("template name"),
 			"name":     str("short name, letters/digits/-/_ (default <template>-<n>)"),
-			"purpose":  str("what this worker is for, e.g. \"fix login bug in tapnow-web\" — you route later tasks on this"),
+			"purpose":  str("what this worker is for, e.g. \"fix the login page\" — you route later tasks on this"),
 			"dir":      str("workspace = existing: the directory to work in (under the template's roots)"),
 			"repo":     str("workspace = worktree: the git repository to branch from (default: the template's repo)"),
 		}, "template", "purpose"),
@@ -600,6 +600,7 @@ func New(env Env) *Registry {
 		addAct(r, env)
 		addToolbox(r, env)
 		addWakeup(r, env)
+		addDecide(r, env)
 	}
 	sort.Strings(r.names)
 	return r

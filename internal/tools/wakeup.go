@@ -17,8 +17,8 @@ func addWakeup(r *Registry, env Env) {
 		Description: "Have bot-connect wake you later: once (when: 周五 15:00 / 明天上午 / 2h) or on a rhythm (every: cron \"0 9 * * 1\" = Mondays 9:00, @every 1d, @daily, " +
 			"optional \"TZ=Asia/Shanghai \" prefix). At the time, a wakeup signal with your note arrives and wakes you. Use it for things you must remember to DO later — " +
 			"follow up on a promise, prepare a weekly report, check back after someone's holiday. To know when something CHANGES, use watch instead (it costs no turns). " +
-			"A condition (if_*) is looked at by bot-connect first, at no cost: if it shows nothing (or fails) this time is skipped — \"weekdays 9:00, if there are open PRs\" " +
-			"(if_kind=cmd if_target=gh if_args=[pr,list]) or an approved toolbox tool. Reminders the principal asks for fire on time; wakeups you give yourself (and rhythms) keep to the working hours and the day's budget. " +
+			"A condition (if_*) is looked at by bot-connect first, at no cost: if it shows nothing (or fails) this time is skipped — \"weekdays 9:00, if the source shows anything\" " +
+			"(any look probe, or an approved toolbox tool). Reminders the principal asks for fire on time; wakeups you give yourself (and rhythms) keep to the working hours and the day's budget. " +
 			"The overview shows the next wakeups; list / cancel them here (the principal's routines are theirs to change).",
 		PrincipalOnly: true,
 		Schema: obj(props{
